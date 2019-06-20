@@ -1,0 +1,12 @@
+[package]
+name = "niart"
+version = "0.1.0"
+authors = ["Michael Ziegler <michael.ziegler@proemion.com>"]
+edition = "2018"
+
+[dependencies]
+piston = "0.48.0"
+piston_window = "*"
+piston2d-graphics = "0.32.0"
+pistoncore-glutin_window = "0.62.1"
+piston2d-opengl_graphics = "0.65.0"
