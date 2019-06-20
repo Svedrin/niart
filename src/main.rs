@@ -1,13 +1,56 @@
 extern crate piston_window;
 extern crate image as im;
 extern crate vecmath;
+extern crate specs;
 
 // I need a
 // https://raw.githubusercontent.com/PistonDevelopers/piston-examples/master/src/paint.rs
 // is what I need!
 
 use piston_window::*;
+use specs::prelude::*;
 use vecmath::*;
+
+
+#[derive(Debug)]
+struct Velocity {
+    x: f32,
+    y: f32
+}
+
+impl Component for Velocity {
+    type Storage = VecStorage<Self>;
+}
+
+#[derive(Debug)]
+struct Position {
+    x: f32,
+    y: f32
+}
+
+impl Component for Position {
+    type Storage = VecStorage<Self>;
+}
+
+struct SysPhys;
+
+impl<'a> System<'a> for SysPhys {
+    // These are the resources required for execution.
+    // You can also define a struct and `#[derive(SystemData)]`,
+    // see the `full` example.
+    type SystemData = (WriteStorage<'a, Position>, ReadStorage<'a, Velocity>);
+
+    fn run(&mut self, (mut pos, vel): Self::SystemData) {
+        // The `.join()` combines multiple component storages,
+        // so we get access to all entities which have
+        // both a position and a velocity.
+        for (pos, vel) in (&mut pos, &vel).join() {
+            pos.x += vel.x;
+            pos.y += vel.y;
+        }
+    }
+}
+
 
 fn main() {
     let (width, height) = (640, 480);
@@ -28,7 +71,24 @@ fn main() {
 
     let mut last_pos: Option<[f64; 2]> = None;
 
+    let mut world = World::new();
+    world.register::<Position>();
+    world.register::<Velocity>();
+
+    world.create_entity()
+        .with(Position { x: 1.6, y: 10.0 })
+    .build();
+
+    let mut dispatcher = DispatcherBuilder::new()
+        .with(SysPhys,"sys_phys",&[])
+        .build();
+    dispatcher.setup(&mut world.res);
+
     while let Some(evt) = window.next() {
+        if let Some(_) = evt.update_args() {
+            dispatcher.dispatch(&mut world.res);
+            world.maintain();
+        }
         window.draw_2d(&evt, |c, g, device| {
             texture.update(&mut texture_context, &canvas).unwrap();
             // Update texture before rendering.
@@ -70,7 +130,6 @@ fn main() {
 
                 last_pos = Some(pos)
             };
-
         }
     }
 }
