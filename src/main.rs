@@ -33,6 +33,16 @@ impl Component for Position {
     type Storage = VecStorage<Self>;
 }
 
+#[derive(Debug)]
+struct Acceleration {
+    x: f64,
+    y: f64
+}
+
+impl Component for Acceleration {
+    type Storage = VecStorage<Self>;
+}
+
 
 #[derive(Debug)]
 enum RoleKind {
@@ -52,15 +62,18 @@ impl Component for Role {
 struct SysPhys;
 
 impl<'a> System<'a> for SysPhys {
-    // These are the resources required for execution.
-    // You can also define a struct and `#[derive(SystemData)]`,
-    // see the `full` example.
-    type SystemData = (WriteStorage<'a, Position>, ReadStorage<'a, Velocity>);
+    type SystemData = (
+        WriteStorage<'a, Position>,
+        WriteStorage<'a, Velocity>,
+        ReadStorage<'a, Acceleration>,
+    );
 
-    fn run(&mut self, (mut pos, vel): Self::SystemData) {
-        // The `.join()` combines multiple component storages,
-        // so we get access to all entities which have
-        // both a position and a velocity.
+    fn run(&mut self, (mut pos, mut vel, acc): Self::SystemData) {
+        for (vel, acc) in (&mut vel, &acc).join() {
+            vel.x += acc.x;
+            vel.y += acc.y;
+        }
+
         for (pos, vel) in (&mut pos, &vel).join() {
             pos.x += vel.x;
             pos.y += vel.y;
@@ -91,6 +104,7 @@ fn main() {
     let mut world = World::new();
     world.register::<Position>();
     world.register::<Velocity>();
+    world.register::<Acceleration>();
     world.register::<Role>();
 
     world.create_entity()
@@ -104,6 +118,7 @@ fn main() {
     world.create_entity()
         .with(Position { x: 10.0, y: 12.5 })
         .with(Velocity { x: 1.0, y: 0.5 })
+        .with(Acceleration { x: -0.003, y: 0. })
         .with(Role(RoleKind::CrazyThing))
     .build();
 
