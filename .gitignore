@@ -1,2 +1,4 @@
 /target
 **/*.rs.bk
+.idea/
+niart.iml
