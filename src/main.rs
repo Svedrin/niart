@@ -15,8 +15,8 @@ use vecmath::*;
 
 #[derive(Debug)]
 struct Velocity {
-    x: f32,
-    y: f32
+    x: f64,
+    y: f64
 }
 
 impl Component for Velocity {
@@ -25,13 +25,28 @@ impl Component for Velocity {
 
 #[derive(Debug)]
 struct Position {
-    x: f32,
-    y: f32
+    x: f64,
+    y: f64
 }
 
 impl Component for Position {
     type Storage = VecStorage<Self>;
 }
+
+
+#[derive(Debug)]
+enum RoleKind {
+    CoalMine,
+    PowerPlant
+}
+#[derive(Debug)]
+struct Role(RoleKind);
+
+impl Component for Role {
+    type Storage = VecStorage<Self>;
+}
+
+
 
 struct SysPhys;
 
@@ -75,9 +90,15 @@ fn main() {
     let mut world = World::new();
     world.register::<Position>();
     world.register::<Velocity>();
+    world.register::<Role>();
 
     world.create_entity()
-        .with(Position { x: 1.6, y: 10.0 })
+        .with(Position { x: 9.0, y: 14.0 })
+        .with(Role(RoleKind::CoalMine))
+    .build();
+    world.create_entity()
+        .with(Position { x: 590.0, y: 462.5 })
+        .with(Role(RoleKind::PowerPlant))
     .build();
 
     let mut dispatcher = DispatcherBuilder::new()
@@ -97,6 +118,22 @@ fn main() {
 
             clear([1.0; 4], g);
             image(&texture, c.transform, g);
+            let positions = world.read_storage::<Position>();
+            let roles = world.read_storage::<Role>();
+            for entity in world.entities().join() {
+                let pos = positions.get(entity).unwrap();
+                let role = roles.get(entity).unwrap();
+                ellipse_from_to(
+                    match role {
+                        Role(RoleKind::CoalMine) => [1., 0., 0., 1.],
+                        Role(RoleKind::PowerPlant) => [0., 1., 0., 1.],
+                    },
+                    [pos.x - 5., pos.y - 5.],
+                    [pos.x + 5., pos.y + 5.],
+                    c.transform,
+                    g
+                );
+            }
         });
         if let Some(button) = evt.press_args() {
             if button == Button::Mouse(MouseButton::Left) {
