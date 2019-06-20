@@ -1,5 +1,5 @@
 extern crate piston_window;
-extern crate image as im;
+extern crate image;
 extern crate vecmath;
 extern crate specs;
 
@@ -8,6 +8,7 @@ extern crate specs;
 // is what I need!
 
 use piston_window::*;
+use image::{ImageBuffer,Rgba};
 use specs::prelude::*;
 use vecmath::*;
 
@@ -60,7 +61,7 @@ fn main() {
         .build()
         .unwrap();
 
-    let mut canvas = im::ImageBuffer::new(width, height);
+    let mut canvas = ImageBuffer::new(width, height);
     let mut draw = false;
     let mut texture_context = window.create_texture_context();
     let mut texture: G2dTexture = Texture::from_image(
@@ -123,7 +124,7 @@ fn main() {
                         let new_x = (last_x + (diff_x * delta)) as u32;
                         let new_y = (last_y + (diff_y * delta)) as u32;
                         if new_x < width && new_y < height {
-                            canvas.put_pixel(new_x, new_y, im::Rgba([0, 0, 0, 255]));
+                            canvas.put_pixel(new_x, new_y, Rgba([0, 0, 0, 255]));
                         };
                     };
                 };
