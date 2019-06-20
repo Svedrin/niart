@@ -139,11 +139,10 @@ fn main() {
 
             clear([1.0; 4], g);
             image(&texture, c.transform, g);
+
             let positions = world.read_storage::<Position>();
             let roles = world.read_storage::<Role>();
-            for entity in world.entities().join() {
-                let pos = positions.get(entity).unwrap();
-                let role = roles.get(entity).unwrap();
+            for (pos, role) in (&positions, &roles).join() {
                 ellipse_from_to(
                     match role {
                         Role(RoleKind::CoalMine) => [1., 0., 0., 1.],
