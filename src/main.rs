@@ -37,7 +37,8 @@ impl Component for Position {
 #[derive(Debug)]
 enum RoleKind {
     CoalMine,
-    PowerPlant
+    PowerPlant,
+    CrazyThing
 }
 #[derive(Debug)]
 struct Role(RoleKind);
@@ -100,6 +101,11 @@ fn main() {
         .with(Position { x: 590.0, y: 462.5 })
         .with(Role(RoleKind::PowerPlant))
     .build();
+    world.create_entity()
+        .with(Position { x: 10.0, y: 12.5 })
+        .with(Velocity { x: 1.0, y: 0.5 })
+        .with(Role(RoleKind::CrazyThing))
+    .build();
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(SysPhys,"sys_phys",&[])
@@ -127,6 +133,7 @@ fn main() {
                     match role {
                         Role(RoleKind::CoalMine) => [1., 0., 0., 1.],
                         Role(RoleKind::PowerPlant) => [0., 1., 0., 1.],
+                        Role(RoleKind::CrazyThing) => [0., 0., 1., 1.],
                     },
                     [pos.x - 5., pos.y - 5.],
                     [pos.x + 5., pos.y + 5.],
