@@ -29,16 +29,14 @@ fn main() {
     let mut last_pos: Option<[f64; 2]> = None;
 
     while let Some(e) = window.next() {
-        if let Some(_) = e.render_args() {
+        window.draw_2d(&e, |c, g, device| {
             texture.update(&mut texture_context, &canvas).unwrap();
-            window.draw_2d(&e, |c, g, device| {
-                // Update texture before rendering.
-                texture_context.encoder.flush(device);
+            // Update texture before rendering.
+            texture_context.encoder.flush(device);
 
-                clear([1.0; 4], g);
-                image(&texture, c.transform, g);
-            });
-        }
+            clear([1.0; 4], g);
+            image(&texture, c.transform, g);
+        });
         if let Some(button) = e.press_args() {
             if button == Button::Mouse(MouseButton::Left) {
                 draw = true;
