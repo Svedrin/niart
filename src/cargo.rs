@@ -42,10 +42,9 @@ impl CargoProducer {
         }
     }
 
-    pub fn from_array(production: &[(CargoKind, f64)]) -> Self {
-        Self {
-            quantities: production.iter().cloned().collect()
-        }
+    pub fn with(mut self, kind: CargoKind, production: f64) -> Self {
+        self.quantities.insert(kind, production);
+        self
     }
 }
 

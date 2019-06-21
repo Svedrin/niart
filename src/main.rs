@@ -1,6 +1,7 @@
 extern crate piston_window;
 extern crate gfx_device_gl;
 extern crate image as im;
+extern crate imageproc as imp;
 extern crate vecmath;
 extern crate specs;
 
@@ -78,7 +79,10 @@ fn main() {
     world.create_entity()
         .with(physics::Position { x: 9.0, y: 14.0 })
         .with(cargo::CargoStorage::new())
-        .with(cargo::CargoProducer::from_array(&[(cargo::CargoKind::Coal, 10.0)]))
+        .with(
+            cargo::CargoProducer::new()
+                .with(cargo::CargoKind::Coal, 0.1)
+        )
         .with(Role(RoleKind::CoalMine))
     .build();
     world.create_entity()
