@@ -1,5 +1,6 @@
 extern crate piston_window;
-extern crate image;
+extern crate gfx_device_gl;
+extern crate image as im;
 extern crate vecmath;
 extern crate specs;
 
@@ -7,14 +8,13 @@ extern crate specs;
 // https://raw.githubusercontent.com/PistonDevelopers/piston-examples/master/src/paint.rs
 // is what I need!
 
-use std::time::{SystemTime, Duration};
-use piston_window::*;
-use image::{ImageBuffer,Rgba};
+use std::time::SystemTime;
 use specs::prelude::*;
-use vecmath::*;
+use piston_window::*;
 
 mod physics;
 mod cargo;
+mod map;
 
 
 #[derive(Default)]
@@ -63,16 +63,7 @@ fn main() {
         .build()
         .unwrap();
 
-    let mut canvas = ImageBuffer::new(width, height);
-    let mut draw = false;
-    let mut texture_context = window.create_texture_context();
-    let mut texture: G2dTexture = Texture::from_image(
-        &mut texture_context,
-        &canvas,
-        &TextureSettings::new()
-    ).unwrap();
-
-    let mut last_pos: Option<[f64; 2]> = None;
+    let mut map = map::Map::new(&mut window, width, height);
 
     let mut world = World::new();
     world.register::<physics::Position>();
@@ -119,12 +110,8 @@ fn main() {
             world.maintain();
         }
         window.draw_2d(&evt, |c, g, device| {
-            // Update texture before rendering.
-            texture.update(&mut texture_context, &canvas).unwrap();
-            texture_context.encoder.flush(device);
-
             clear([1.0; 4], g);
-            image(&texture, c.transform, g);
+            map.render(c, g, device);
 
             let positions = world.read_storage::<physics::Position>();
             let roles = world.read_storage::<Role>();
@@ -144,37 +131,16 @@ fn main() {
         });
         if let Some(button) = evt.press_args() {
             if button == Button::Mouse(MouseButton::Left) {
-                draw = true;
+                map.start_drawing();
             }
-        };
+        }
         if let Some(button) = evt.release_args() {
             if button == Button::Mouse(MouseButton::Left) {
-                draw = false;
-                last_pos = None
+                map.stop_drawing();
             }
-        };
-        if draw {
-            if let Some(pos) = evt.mouse_cursor_args() {
-                let (x, y) = (pos[0] as f32, pos[1] as f32);
-
-                if let Some(p) = last_pos {
-                    let (last_x, last_y) = (p[0] as f32, p[1] as f32);
-                    let distance = vec2_len(vec2_sub(p, pos)) as u32;
-
-                    for i in 0..distance {
-                        let diff_x = x - last_x;
-                        let diff_y = y - last_y;
-                        let delta = i as f32 / distance as f32;
-                        let new_x = (last_x + (diff_x * delta)) as u32;
-                        let new_y = (last_y + (diff_y * delta)) as u32;
-                        if new_x < width && new_y < height {
-                            canvas.put_pixel(new_x, new_y, Rgba([0, 0, 0, 255]));
-                        };
-                    };
-                };
-
-                last_pos = Some(pos)
-            };
+        }
+        if let Some(pos) = evt.mouse_cursor_args() {
+            map.mouse_moved(pos);
         }
     }
 }

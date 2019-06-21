@@ -631,6 +631,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "niart"
 version = "0.1.0"
 dependencies = [
+ "gfx_device_gl 0.15.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.21.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "piston 0.48.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "piston2d-graphics 0.32.0 (registry+https://github.com/rust-lang/crates.io-index)",
