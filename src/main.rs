@@ -2,7 +2,6 @@ extern crate piston_window;
 extern crate gfx_device_gl;
 extern crate image as im;
 extern crate imageproc as imp;
-extern crate vecmath;
 extern crate specs;
 
 // I need a
@@ -87,6 +86,10 @@ fn main() {
     .build();
     world.create_entity()
         .with(physics::Position { x: 590.0, y: 462.5 })
+        .with(Role(RoleKind::PowerPlant))
+    .build();
+    world.create_entity()
+        .with(physics::Position { x: 590.0, y: 130.0 })
         .with(Role(RoleKind::PowerPlant))
     .build();
     world.create_entity()
