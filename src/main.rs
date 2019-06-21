@@ -7,40 +7,36 @@ extern crate specs;
 // https://raw.githubusercontent.com/PistonDevelopers/piston-examples/master/src/paint.rs
 // is what I need!
 
+use std::time::{SystemTime, Duration};
 use piston_window::*;
 use image::{ImageBuffer,Rgba};
 use specs::prelude::*;
 use vecmath::*;
 
+mod physics;
+mod cargo;
 
-#[derive(Debug)]
-struct Velocity {
-    x: f64,
-    y: f64
+
+#[derive(Default)]
+pub struct DeltaTime {
+    pub fraction: f64,
+    last_updated_at: Option<SystemTime>
 }
 
-impl Component for Velocity {
-    type Storage = VecStorage<Self>;
-}
+impl DeltaTime {
+    pub fn new() -> Self {
+        Self {
+            fraction: 0.05,
+            last_updated_at: Some(SystemTime::now())
+        }
+    }
 
-#[derive(Debug)]
-struct Position {
-    x: f64,
-    y: f64
-}
-
-impl Component for Position {
-    type Storage = VecStorage<Self>;
-}
-
-#[derive(Debug)]
-struct Acceleration {
-    x: f64,
-    y: f64
-}
-
-impl Component for Acceleration {
-    type Storage = VecStorage<Self>;
+    pub fn update(&mut self) {
+        let now = SystemTime::now();
+        let dura = now.duration_since(self.last_updated_at.unwrap()).unwrap();
+        self.fraction = (dura.as_secs() as f64) + (dura.subsec_micros() as f64 / 1_000_000 as f64);
+        self.last_updated_at = Some(now);
+    }
 }
 
 
@@ -48,7 +44,7 @@ impl Component for Acceleration {
 enum RoleKind {
     CoalMine,
     PowerPlant,
-    CrazyThing
+    Train
 }
 #[derive(Debug)]
 struct Role(RoleKind);
@@ -59,33 +55,10 @@ impl Component for Role {
 
 
 
-struct SysPhys;
-
-impl<'a> System<'a> for SysPhys {
-    type SystemData = (
-        WriteStorage<'a, Position>,
-        WriteStorage<'a, Velocity>,
-        ReadStorage<'a, Acceleration>,
-    );
-
-    fn run(&mut self, (mut pos, mut vel, acc): Self::SystemData) {
-        for (vel, acc) in (&mut vel, &acc).join() {
-            vel.x += acc.x;
-            vel.y += acc.y;
-        }
-
-        for (pos, vel) in (&mut pos, &vel).join() {
-            pos.x += vel.x;
-            pos.y += vel.y;
-        }
-    }
-}
-
-
 fn main() {
     let (width, height) = (640, 480);
     let mut window: PistonWindow =
-        WindowSettings::new("piston: paint", (width, height))
+        WindowSettings::new("niart", (width, height))
         .exit_on_esc(true)
         .build()
         .unwrap();
@@ -102,52 +75,65 @@ fn main() {
     let mut last_pos: Option<[f64; 2]> = None;
 
     let mut world = World::new();
-    world.register::<Position>();
-    world.register::<Velocity>();
-    world.register::<Acceleration>();
+    world.register::<physics::Position>();
+    world.register::<physics::TrainEngine>();
+    world.register::<cargo::CargoStorage>();
+    world.register::<cargo::CargoProducer>();
+    world.register::<cargo::CargoConsumer>();
     world.register::<Role>();
 
+    world.add_resource(DeltaTime::new());
+
     world.create_entity()
-        .with(Position { x: 9.0, y: 14.0 })
+        .with(physics::Position { x: 9.0, y: 14.0 })
+        .with(cargo::CargoStorage::new())
+        .with(cargo::CargoProducer::from_array(&[(cargo::CargoKind::Coal, 10.0)]))
         .with(Role(RoleKind::CoalMine))
     .build();
     world.create_entity()
-        .with(Position { x: 590.0, y: 462.5 })
+        .with(physics::Position { x: 590.0, y: 462.5 })
         .with(Role(RoleKind::PowerPlant))
     .build();
     world.create_entity()
-        .with(Position { x: 10.0, y: 12.5 })
-        .with(Velocity { x: 1.0, y: 0.5 })
-        .with(Acceleration { x: -0.003, y: 0. })
-        .with(Role(RoleKind::CrazyThing))
+        .with(physics::Position { x: 10.0, y: 12.5 })
+        .with(physics::TrainEngine {
+            velocity:     physics::Coords { x:  30.0, y: 15. },
+            acceleration: physics::Coords { x: -3., y: 0. },
+            vmin: 0.0,
+            vmax: 10.0
+        })
+        .with(Role(RoleKind::Train))
     .build();
 
     let mut dispatcher = DispatcherBuilder::new()
-        .with(SysPhys,"sys_phys",&[])
+        .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
+        .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
+        .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])
         .build();
     dispatcher.setup(&mut world.res);
 
     while let Some(evt) = window.next() {
         if let Some(_) = evt.update_args() {
+            world.write_resource::<DeltaTime>().update();
             dispatcher.dispatch(&mut world.res);
             world.maintain();
         }
         window.draw_2d(&evt, |c, g, device| {
-            texture.update(&mut texture_context, &canvas).unwrap();
             // Update texture before rendering.
+            texture.update(&mut texture_context, &canvas).unwrap();
             texture_context.encoder.flush(device);
 
             clear([1.0; 4], g);
             image(&texture, c.transform, g);
 
-            let positions = world.read_storage::<Position>();
+            let positions = world.read_storage::<physics::Position>();
             let roles = world.read_storage::<Role>();
             for (pos, role) in (&positions, &roles).join() {
                 ellipse_from_to(
                     match role {
-                        Role(RoleKind::CoalMine) => [1., 0., 0., 1.],
+                        Role(RoleKind::CoalMine)   => [1., 0., 0., 1.],
                         Role(RoleKind::PowerPlant) => [0., 1., 0., 1.],
-                        Role(RoleKind::CrazyThing) => [0., 0., 1., 1.],
+                        Role(RoleKind::Train)      => [0., 0., 1., 1.],
                     },
                     [pos.x - 5., pos.y - 5.],
                     [pos.x + 5., pos.y + 5.],
