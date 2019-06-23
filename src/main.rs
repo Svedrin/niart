@@ -13,6 +13,7 @@ use specs::prelude::*;
 use piston_window::*;
 
 mod physics;
+mod routing;
 mod cargo;
 mod map;
 
@@ -44,6 +45,7 @@ impl DeltaTime {
 enum RoleKind {
     CoalMine,
     PowerPlant,
+    WayPoint,
     Train
 }
 #[derive(Debug)]
@@ -68,6 +70,7 @@ fn main() {
     let mut world = World::new();
     world.register::<physics::Position>();
     world.register::<physics::TrainEngine>();
+    world.register::<routing::Junction>();
     world.register::<cargo::CargoStorage>();
     world.register::<cargo::CargoProducer>();
     world.register::<cargo::CargoConsumer>();
@@ -83,25 +86,29 @@ fn main() {
                 .with(cargo::CargoKind::Coal, 0.1)
         )
         .with(Role(RoleKind::CoalMine))
-    .build();
+        .with(routing::Junction::new())
+        .build();
     world.create_entity()
         .with(physics::Position { x: 590.0, y: 462.5 })
         .with(Role(RoleKind::PowerPlant))
-    .build();
+        .with(routing::Junction::new())
+        .build();
     world.create_entity()
         .with(physics::Position { x: 590.0, y: 130.0 })
         .with(Role(RoleKind::PowerPlant))
-    .build();
+        .with(routing::Junction::new())
+        .build();
     world.create_entity()
         .with(physics::Position { x: 10.0, y: 12.5 })
         .with(physics::TrainEngine {
+            direction:    0.0,
             velocity:     physics::Coords { x:  30.0, y: 15. },
             acceleration: physics::Coords { x: -3., y: 0. },
             vmin: 0.0,
             vmax: 10.0
         })
         .with(Role(RoleKind::Train))
-    .build();
+        .build();
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
@@ -111,31 +118,6 @@ fn main() {
     dispatcher.setup(&mut world.res);
 
     while let Some(evt) = window.next() {
-        if let Some(_) = evt.update_args() {
-            world.write_resource::<DeltaTime>().update();
-            dispatcher.dispatch(&mut world.res);
-            world.maintain();
-        }
-        window.draw_2d(&evt, |c, g, device| {
-            clear([1.0; 4], g);
-            map.render(c, g, device);
-
-            let positions = world.read_storage::<physics::Position>();
-            let roles = world.read_storage::<Role>();
-            for (pos, role) in (&positions, &roles).join() {
-                ellipse_from_to(
-                    match role {
-                        Role(RoleKind::CoalMine)   => [1., 0., 0., 1.],
-                        Role(RoleKind::PowerPlant) => [0., 1., 0., 1.],
-                        Role(RoleKind::Train)      => [0., 0., 1., 1.],
-                    },
-                    [pos.x - 5., pos.y - 5.],
-                    [pos.x + 5., pos.y + 5.],
-                    c.transform,
-                    g
-                );
-            }
-        });
         if let Some(button) = evt.press_args() {
             if button == Button::Mouse(MouseButton::Left) {
                 map.start_drawing();
@@ -149,5 +131,81 @@ fn main() {
         if let Some(pos) = evt.mouse_cursor_args() {
             map.mouse_moved(pos);
         }
+
+        if let Some(map_event) = map.next_event() {
+            if let map::MapEvent::NewRail(from, to) = map_event {
+                println!("New rail created! Goes los from {:?} to {:?}", from, to);
+                let mut start = None;
+                let mut end = None;
+                {
+                    let entities = world.entities();
+                    let positions = world.read_storage::<physics::Position>();
+                    let junctions = world.read_storage::<routing::Junction>();
+                    let roles = world.read_storage::<Role>();
+                    for (ent, pos, junction) in (&entities, &positions, &junctions).join() {
+                        if from.distance_to(pos) < 4.0 {
+                            println!("Start is near a junction {:?}! {:?}", ent, junction);
+                            start = Some(ent);
+                        }
+                        if to.distance_to(pos) < 4.0 {
+                            println!("End is near a junction {:?}! {:?}", ent, junction);
+                            end = Some(ent);
+                        }
+                    }
+                }
+                if start.is_none() {
+                    start = Some(
+                        world.create_entity()
+                            .with(from)
+                            .with(Role(RoleKind::WayPoint))
+                            .with(routing::Junction::new())
+                            .build()
+                    );
+                }
+                if end.is_none() {
+                    end = Some(
+                        world.create_entity()
+                            .with(to)
+                            .with(Role(RoleKind::WayPoint))
+                            .with(routing::Junction::new())
+                            .build()
+                    );
+                }
+                world.write_storage::<routing::Junction>()
+                    .get_mut(start.unwrap()).unwrap()
+                    .connections.push(end.unwrap());
+                world.write_storage::<routing::Junction>()
+                    .get_mut(end.unwrap()).unwrap()
+                    .connections.push(start.unwrap());
+            }
+        }
+
+        if let Some(_) = evt.update_args() {
+            world.write_resource::<DeltaTime>().update();
+            dispatcher.dispatch(&mut world.res);
+            world.maintain();
+        }
+
+        window.draw_2d(&evt, |c, g, device| {
+            clear([1.0; 4], g);
+            map.render(c, g, device);
+
+            let positions = world.read_storage::<physics::Position>();
+            let roles = world.read_storage::<Role>();
+            for (pos, role) in (&positions, &roles).join() {
+                ellipse_from_to(
+                    match role {
+                        Role(RoleKind::CoalMine)   => [1.,  0.,  0.,  1.],
+                        Role(RoleKind::PowerPlant) => [0.,  1.,  0.,  1.],
+                        Role(RoleKind::Train)      => [0.,  0.,  1.,  1.],
+                        Role(RoleKind::WayPoint)   => [0.8, 0.8, 0.,  1.],
+                    },
+                    [pos.x - 5., pos.y - 5.],
+                    [pos.x + 5., pos.y + 5.],
+                    c.transform,
+                    g
+                );
+            }
+        });
     }
 }

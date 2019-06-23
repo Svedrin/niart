@@ -6,6 +6,33 @@ pub struct Position {
     pub y: f64
 }
 
+impl Position {
+    pub fn distance_to(&self, other: &Position) -> f64 {
+        let dx = (self.x - other.x).abs();
+        let dy = (self.y - other.y).abs();
+        (dx.powi(2) + dy.powi(2)).sqrt()
+    }
+}
+
+impl From<[f64; 2]> for Position {
+    fn from(floats: [f64; 2]) -> Self {
+        Self {
+            x: floats[0],
+            y: floats[1]
+        }
+    }
+}
+
+impl From<[f32; 2]> for Position {
+    fn from(floats: [f32; 2]) -> Self {
+        Self {
+            x: floats[0] as f64,
+            y: floats[1] as f64
+        }
+    }
+}
+
+
 impl Component for Position {
     type Storage = VecStorage<Self>;
 }
@@ -18,6 +45,7 @@ pub struct Coords {
 
 #[derive(Debug)]
 pub struct TrainEngine {
+    pub direction:    f64, // Radians clockwise from North or something
     pub velocity:     Coords,
     pub acceleration: Coords,
     pub vmin: f64,

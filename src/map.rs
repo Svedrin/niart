@@ -2,6 +2,14 @@ use piston_window::*;
 use gfx_device_gl::Device;
 use im::{ImageBuffer,Rgba};
 use imp::drawing::draw_line_segment_mut;
+use std::collections::VecDeque;
+
+use super::physics::Position;
+
+pub enum MapEvent {
+    NewRail(Position, Position),
+    RandomEvent
+}
 
 enum State {
     NotDrawing,
@@ -14,6 +22,7 @@ pub struct Map {
     texture_context: G2dTextureContext,
     texture:         G2dTexture,
     mouse_pos:       [f64; 2],
+    events:          VecDeque<MapEvent>
 }
 
 impl Map {
@@ -31,6 +40,7 @@ impl Map {
             texture_context: texture_context,
             texture:   texture,
             mouse_pos: [0.0; 2],
+            events:    VecDeque::new(),
         }
     }
 
@@ -64,10 +74,33 @@ impl Map {
                 (self.mouse_pos[0] as f32, self.mouse_pos[1] as f32),
                 Rgba([0, 0, 0, 255])
             );
+            self.events.push_back(
+                MapEvent::NewRail(
+                    Position::from(start_pos),
+                    Position::from(self.mouse_pos)
+                )
+            );
         }
     }
 
     pub fn mouse_moved(&mut self, pos: [f64; 2]) {
         self.mouse_pos = pos.clone();
+    }
+
+    pub fn next_event(&mut self) -> Option<MapEvent> {
+        self.events.pop_front()
+    }
+
+    pub fn find_rails_at(&self, start: &Position) {
+        let sx = start.x as u32;
+        let sy = start.y as u32;
+        for check_x in (sx - 5)..(sx + 5) {
+            for check_y in (sy - 5)..(sy + 5) {
+                let px = self.canvas.get_pixel(check_x, check_y);
+                if px[3] == 0xFF {
+                    println!("Pixel at {}:{} is a track: {:?}", check_x, check_y, px);
+                }
+            }
+        }
     }
 }
