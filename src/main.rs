@@ -128,6 +128,7 @@ fn main() {
                                 .with(pos.clone())
                                 .with(Role(RoleKind::Train))
                                 .with(routing::TrainRouting::with_destination(
+                                    ent,
                                     next_hop,
                                     destination
                                 ))
