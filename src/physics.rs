@@ -1,16 +1,40 @@
 use specs::prelude::*;
 
-#[derive(Debug)]
+#[derive(Clone,Debug)]
 pub struct Position {
     pub x: f64,
     pub y: f64
 }
 
 impl Position {
+    pub fn zero() -> Self {
+        Self { x: 0.0, y: 0.0 }
+    }
+
+    pub fn new(x: f64, y: f64) -> Self {
+        Self { x: x, y: y }
+    }
+
     pub fn distance_to(&self, other: &Position) -> f64 {
         let dx = (self.x - other.x).abs();
         let dy = (self.y - other.y).abs();
         (dx.powi(2) + dy.powi(2)).sqrt()
+    }
+
+    pub fn as_f32_array(&self) -> [f32; 2] {
+        [self.x as f32, self.y as f32]
+    }
+
+    pub fn as_f64_array(&self) -> [f64; 2] {
+        [self.x, self.y]
+    }
+
+    pub fn as_f32_tuple(&self) -> (f32, f32) {
+        (self.x as f32, self.y as f32)
+    }
+
+    pub fn as_f64_tuple(&self) -> (f64, f64) {
+        (self.x, self.y)
     }
 }
 
@@ -32,10 +56,10 @@ impl From<[f32; 2]> for Position {
     }
 }
 
-
 impl Component for Position {
     type Storage = VecStorage<Self>;
 }
+
 
 #[derive(Debug)]
 pub struct Coords {
