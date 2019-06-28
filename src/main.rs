@@ -117,10 +117,32 @@ fn main() {
         .build();
     dispatcher.setup(&mut world.res);
 
+    let mut mouse_pos = physics::Position::zero();
+
     while let Some(evt) = window.next() {
         if let Some(button) = evt.press_args() {
             if button == Button::Mouse(MouseButton::Left) {
                 map.start_drawing();
+            }
+            if button == Button::Mouse(MouseButton::Right) {
+                let entities = world.entities();
+                let positions = world.read_storage::<physics::Position>();
+                let junctions = world.read_storage::<routing::Junction>();
+                let lazyupdt = world.read_resource::<LazyUpdate>();
+                for (ent, pos, junction) in (&entities, &positions, &junctions).join() {
+                    if mouse_pos.distance_to(pos) < 10.0 {
+                        if !junction.connections.is_empty() {
+                            println!("Planting train at junction {:?} heading towards {:?}", ent, junction.connections[0]);
+                            lazyupdt.create_entity(&entities)
+                                .with(pos.clone())
+                                .with(Role(RoleKind::Train))
+                                .with(routing::TrainRouting::new())
+                                .build();
+                        } else {
+                            println!("Planting train at junction {:?} is not possible, junction does not have connections", ent);
+                        }
+                    }
+                }
             }
         }
         if let Some(button) = evt.release_args() {
@@ -129,6 +151,7 @@ fn main() {
             }
         }
         if let Some(pos) = evt.mouse_cursor_args() {
+            mouse_pos = physics::Position::from(pos);
             map.mouse_moved(pos);
         }
 
