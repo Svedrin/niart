@@ -74,6 +74,7 @@ fn main() {
     world.register::<cargo::CargoStorage>();
     world.register::<cargo::CargoProducer>();
     world.register::<cargo::CargoConsumer>();
+    world.register::<routing::TrainRouting>();
     world.register::<Role>();
 
     world.add_resource(DeltaTime::new());
@@ -101,6 +102,7 @@ fn main() {
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
+        .with(routing::TrainRoutingSystem, "TrainRoutingSystem", &[])
         .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
         .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])
         .build();
@@ -125,7 +127,16 @@ fn main() {
                             lazyupdt.create_entity(&entities)
                                 .with(pos.clone())
                                 .with(Role(RoleKind::Train))
-                                .with(routing::TrainRouting::new())
+                                .with(routing::TrainRouting::with_destination(
+                                    junction.connections[0],
+                                    junction.connections[0]
+                                ))
+                                .with(physics::TrainEngine {
+                                    velocity:     physics::Vector { x:  0., y: 0. },
+                                    acceleration: physics::Vector { x:  0., y: 0. },
+                                    vmax:     30.0,
+                                    amax:      5.0
+                                })
                                 .build();
                         } else {
                             println!("Planting train at junction {:?} is not possible, junction does not have connections", ent);
