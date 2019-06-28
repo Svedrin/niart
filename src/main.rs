@@ -87,17 +87,17 @@ fn main() {
                 .with(cargo::CargoKind::Coal, 0.1)
         )
         .with(Role(RoleKind::CoalMine))
-        .with(routing::Junction::new())
+        .with(routing::Junction::new_terminal())
         .build();
     world.create_entity()
         .with(physics::Position { x: 590.0, y: 462.5 })
         .with(Role(RoleKind::PowerPlant))
-        .with(routing::Junction::new())
+        .with(routing::Junction::new_terminal())
         .build();
     world.create_entity()
         .with(physics::Position { x: 590.0, y: 130.0 })
         .with(Role(RoleKind::PowerPlant))
-        .with(routing::Junction::new())
+        .with(routing::Junction::new_terminal())
         .build();
 
     let mut dispatcher = DispatcherBuilder::new()
@@ -122,14 +122,14 @@ fn main() {
                 let lazyupdt = world.read_resource::<LazyUpdate>();
                 for (ent, pos, junction) in (&entities, &positions, &junctions).join() {
                     if mouse_pos.distance_length_to(pos) < 10.0 {
-                        if !junction.connections.is_empty() {
+                        if let Some((next_hop, destination)) = junction.find_any_other_terminal(&junctions) {
                             println!("Planting train at junction {:?} heading towards {:?}", ent, junction.connections[0]);
                             lazyupdt.create_entity(&entities)
                                 .with(pos.clone())
                                 .with(Role(RoleKind::Train))
                                 .with(routing::TrainRouting::with_destination(
-                                    junction.connections[0],
-                                    junction.connections[0]
+                                    next_hop,
+                                    destination
                                 ))
                                 .with(physics::TrainEngine {
                                     velocity:     physics::Vector { x:  0., y: 0. },

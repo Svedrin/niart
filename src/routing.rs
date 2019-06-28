@@ -2,16 +2,67 @@ use specs::prelude::*;
 
 use super::physics::Vector;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Junction {
-    pub connections: Vec<Entity>
+    pub connections: Vec<Entity>,
+    pub is_terminal: bool,
 }
 
 impl Junction {
     pub fn new() -> Self {
         Self {
-            connections: vec![]
+            connections: vec![],
+            is_terminal: false,
         }
+    }
+
+    pub fn new_terminal() -> Self {
+        Self {
+            connections: vec![],
+            is_terminal: true,
+        }
+    }
+}
+
+impl<'a> Junction {
+    pub fn find_any_other_terminal(&self, junctions: &ReadStorage<'a, Junction>) -> Option<(Entity, Entity)> {
+        for &next_hop_ent in &self.connections {
+            let next_hop = junctions.get(next_hop_ent).unwrap();
+            if next_hop.is_terminal {
+                return Some((next_hop_ent, next_hop_ent));
+            }
+            if let Some((_, dest_ent)) = next_hop.find_any_other_terminal(junctions) {
+                return Some((next_hop_ent, dest_ent));
+            }
+        }
+        None
+    }
+
+    pub fn next_hop_to_dest(&self, from: &Junction, dest: Entity, junctions: &ReadStorage<'a, Junction>) -> Option<(u32, Entity)> {
+        // Find connection with shortest distance to destination (if destination is reachable)
+        let mut min_distance = u32::max_value();
+        let mut candidate = None;
+        for &next_hop_ent in &self.connections {
+            if next_hop_ent == dest && min_distance > 1 {
+                min_distance = 1;
+                candidate = Some(next_hop_ent);
+                break; // Ain't gonna get better than a direct link
+            }
+            let next_hop = junctions.get(next_hop_ent).unwrap();
+            if next_hop == from {
+                continue;
+            }
+            if let Some((distance, _)) = next_hop.next_hop_to_dest(&self, dest, junctions) {
+                if distance + 1 < min_distance {
+                    min_distance = distance + 1;
+                    candidate = Some(next_hop_ent);
+                }
+            }
+        }
+        if let Some(candidate) = candidate {
+            return Some((min_distance, candidate));
+        }
+        None
     }
 }
 
@@ -34,7 +85,7 @@ impl TrainRouting {
         }
     }
 
-    pub fn with_destination(dest: Entity, next: Entity) -> Self {
+    pub fn with_destination(next: Entity, dest: Entity) -> Self {
         Self {
             destination: Some(dest),
             next_hop:    Some(next),
@@ -54,10 +105,10 @@ impl<'a> System<'a> for TrainRoutingSystem {
         ReadStorage<'a, super::physics::Position>,
         WriteStorage<'a, super::physics::TrainEngine>,
         WriteStorage<'a, TrainRouting>,
-        Read<'a, super::DeltaTime>,
+        ReadStorage<'a, Junction>,
     );
 
-    fn run(&mut self, (positions, mut engines, mut routing, delta): Self::SystemData) {
+    fn run(&mut self, (positions, mut engines, mut routing, junctions): Self::SystemData) {
         for (position, mut engine, mut routing) in (&positions, &mut engines, &mut routing).join() {
             if let Some(next_hop) = routing.next_hop {
                 let next_pos = positions.get(next_hop).unwrap();
@@ -68,8 +119,25 @@ impl<'a> System<'a> for TrainRoutingSystem {
                     // We'll consider this "arrived"
                     engine.velocity = Vector::zero();
                     engine.acceleration = Vector::zero();
-                    routing.next_hop = None;
-                    routing.destination = None;
+                    // are we at the final destination?
+                    if routing.next_hop == routing.destination {
+                        routing.next_hop = None;
+                        routing.destination = None;
+                    } else {
+                        let next_hop_junction = junctions.get(next_hop).unwrap();
+                        if let Some((_, next_hop)) =
+                            next_hop_junction
+                                .next_hop_to_dest(
+                                    next_hop_junction, // this should be our previous hop, but we don't know it anymore
+                                    routing.destination.unwrap(),
+                                    &junctions
+                                )
+                        {
+                            routing.next_hop = Some(next_hop);
+                        } else {
+                            routing.next_hop = None;
+                        }
+                    }
                     continue;
                 }
 
