@@ -13,7 +13,7 @@ pub enum MapEvent {
 
 enum State {
     NotDrawing,
-    DrawingFrom([f64; 2])
+    DrawingFrom(Position)
 }
 
 pub struct Map {
@@ -21,7 +21,7 @@ pub struct Map {
     state:           State,
     texture_context: G2dTextureContext,
     texture:         G2dTexture,
-    mouse_pos:       [f64; 2],
+    mouse_pos:       Position,
     events:          VecDeque<MapEvent>
 }
 
@@ -39,7 +39,7 @@ impl Map {
             state:  State::NotDrawing,
             texture_context: texture_context,
             texture:   texture,
-            mouse_pos: [0.0; 2],
+            mouse_pos: Position::zero(),
             events:    VecDeque::new(),
         }
     }
@@ -49,12 +49,12 @@ impl Map {
         self.texture.update(&mut self.texture_context, &mut self.canvas).unwrap();
         self.texture_context.encoder.flush(device);
         image(&self.texture, c.transform, g);
-        if let State::DrawingFrom(pos) = self.state {
+        if let State::DrawingFrom(ref pos) = self.state {
             line_from_to(
                 [0., 0., 0., 1.],
                 2.0,
-                pos,
-                self.mouse_pos,
+                pos.as_f64_array(),
+                self.mouse_pos.as_f64_array(),
                 c.transform,
                 g
             );
@@ -66,41 +66,60 @@ impl Map {
     }
 
     pub fn stop_drawing(&mut self) {
-        if let State::DrawingFrom(start_pos) = self.state {
-            self.state = State::NotDrawing;
+        if let State::DrawingFrom(ref start_pos) = self.state {
             draw_line_segment_mut(
                 &mut self.canvas,
-                (start_pos[0] as f32, start_pos[1] as f32),
-                (self.mouse_pos[0] as f32, self.mouse_pos[1] as f32),
+                start_pos.as_f32_tuple(),
+                self.mouse_pos.as_f32_tuple(),
                 Rgba([0, 0, 0, 255])
             );
             self.events.push_back(
-                MapEvent::NewRail(
-                    Position::from(start_pos),
-                    Position::from(self.mouse_pos)
-                )
+                MapEvent::NewRail(start_pos.clone(), self.mouse_pos.clone())
             );
         }
+        self.state = State::NotDrawing;
     }
 
     pub fn mouse_moved(&mut self, pos: [f64; 2]) {
-        self.mouse_pos = pos.clone();
+        self.mouse_pos = Position::from(pos);
+        if let Some(better_pos) = self.find_rails_at(&self.mouse_pos) {
+            self.mouse_pos = better_pos;
+        }
     }
 
     pub fn next_event(&mut self) -> Option<MapEvent> {
         self.events.pop_front()
     }
 
-    pub fn find_rails_at(&self, start: &Position) {
+    fn find_rails_at(&self, start: &Position) -> Option<Position> {
         let sx = start.x as u32;
         let sy = start.y as u32;
+        let mut min_dst = None; // Minimal distance to our mouse cursor
+        let mut min_pos = None; // Position at which we observed min_dst
         for check_x in (sx - 5)..(sx + 5) {
             for check_y in (sy - 5)..(sy + 5) {
+                // Make sure the pixel actually exists
+                if check_x >= self.canvas.width() ||
+                   check_y >= self.canvas.height() {
+                    continue;
+                }
                 let px = self.canvas.get_pixel(check_x, check_y);
                 if px[3] == 0xFF {
-                    println!("Pixel at {}:{} is a track: {:?}", check_x, check_y, px);
+                    // Pixel is a track
+                    let here = Position::new(check_x as f64, check_y as f64);
+                    if min_dst.is_none() {
+                        min_dst = Some(start.distance_to(&here));
+                        min_pos = Some(here);
+                    } else {
+                        let check_dst = start.distance_to(&here);
+                        if check_dst < min_dst.unwrap() {
+                            min_dst = Some(check_dst);
+                            min_pos = Some(here);
+                        }
+                    }
                 }
             }
         }
+        min_pos
     }
 }

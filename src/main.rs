@@ -141,7 +141,6 @@ fn main() {
                     let entities = world.entities();
                     let positions = world.read_storage::<physics::Position>();
                     let junctions = world.read_storage::<routing::Junction>();
-                    let roles = world.read_storage::<Role>();
                     for (ent, pos, junction) in (&entities, &positions, &junctions).join() {
                         if from.distance_to(pos) < 4.0 {
                             println!("Start is near a junction {:?}! {:?}", ent, junction);
@@ -171,12 +170,14 @@ fn main() {
                             .build()
                     );
                 }
+                let start = start.unwrap();
+                let end = end.unwrap();
                 world.write_storage::<routing::Junction>()
-                    .get_mut(start.unwrap()).unwrap()
-                    .connections.push(end.unwrap());
+                    .get_mut(start).unwrap()
+                    .connections.push(end);
                 world.write_storage::<routing::Junction>()
-                    .get_mut(end.unwrap()).unwrap()
-                    .connections.push(start.unwrap());
+                    .get_mut(end).unwrap()
+                    .connections.push(start);
             }
         }
 
