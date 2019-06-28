@@ -1,6 +1,30 @@
 use specs::prelude::*;
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq)]
+pub struct Vector {
+    pub x: f64,
+    pub y: f64,
+}
+
+impl Vector {
+    pub fn zero() -> Self {
+        Self { x: 0.0, y: 0.0 }
+    }
+
+    pub fn length(&self) -> f64 {
+        (self.x.powi(2) + self.y.powi(2)).sqrt()
+    }
+
+    pub fn scale_to_length(&self, new_length: f64) -> Self {
+        let fac = new_length / self.length();
+        Self {
+            x: self.x * fac,
+            y: self.y * fac
+        }
+    }
+}
+
+#[derive(Clone,Debug,PartialEq)]
 pub struct Position {
     pub x: f64,
     pub y: f64
@@ -15,10 +39,15 @@ impl Position {
         Self { x: x, y: y }
     }
 
-    pub fn distance_to(&self, other: &Position) -> f64 {
-        let dx = (self.x - other.x).abs();
-        let dy = (self.y - other.y).abs();
-        (dx.powi(2) + dy.powi(2)).sqrt()
+    pub fn distance_to(&self, other: &Position) -> Vector {
+        Vector {
+            x: self.x - other.x,
+            y: self.y - other.y,
+        }
+    }
+
+    pub fn distance_length_to(&self, other: &Position) -> f64 {
+        self.distance_to(other).length()
     }
 
     pub fn as_f32_array(&self) -> [f32; 2] {
@@ -62,18 +91,11 @@ impl Component for Position {
 
 
 #[derive(Debug)]
-pub struct Coords {
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Debug)]
 pub struct TrainEngine {
-    pub direction:    f64, // Radians clockwise from North or something
-    pub velocity:     Coords,
-    pub acceleration: Coords,
-    pub vmin: f64,
+    pub velocity:     Vector,
+    pub acceleration: Vector,
     pub vmax: f64,
+    pub amax: f64,
 }
 
 impl Component for TrainEngine {

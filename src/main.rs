@@ -98,17 +98,6 @@ fn main() {
         .with(Role(RoleKind::PowerPlant))
         .with(routing::Junction::new())
         .build();
-    world.create_entity()
-        .with(physics::Position { x: 10.0, y: 12.5 })
-        .with(physics::TrainEngine {
-            direction:    0.0,
-            velocity:     physics::Coords { x:  30.0, y: 15. },
-            acceleration: physics::Coords { x: -3., y: 0. },
-            vmin: 0.0,
-            vmax: 10.0
-        })
-        .with(Role(RoleKind::Train))
-        .build();
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
@@ -130,7 +119,7 @@ fn main() {
                 let junctions = world.read_storage::<routing::Junction>();
                 let lazyupdt = world.read_resource::<LazyUpdate>();
                 for (ent, pos, junction) in (&entities, &positions, &junctions).join() {
-                    if mouse_pos.distance_to(pos) < 10.0 {
+                    if mouse_pos.distance_length_to(pos) < 10.0 {
                         if !junction.connections.is_empty() {
                             println!("Planting train at junction {:?} heading towards {:?}", ent, junction.connections[0]);
                             lazyupdt.create_entity(&entities)
@@ -165,11 +154,11 @@ fn main() {
                     let positions = world.read_storage::<physics::Position>();
                     let junctions = world.read_storage::<routing::Junction>();
                     for (ent, pos, junction) in (&entities, &positions, &junctions).join() {
-                        if from.distance_to(pos) < 4.0 {
+                        if from.distance_length_to(pos) < 4.0 {
                             println!("Start is near a junction {:?}! {:?}", ent, junction);
                             start = Some(ent);
                         }
-                        if to.distance_to(pos) < 4.0 {
+                        if to.distance_length_to(pos) < 4.0 {
                             println!("End is near a junction {:?}! {:?}", ent, junction);
                             end = Some(ent);
                         }

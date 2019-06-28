@@ -108,10 +108,10 @@ impl Map {
                     // Pixel is a track
                     let here = Position::new(check_x as f64, check_y as f64);
                     if min_dst.is_none() {
-                        min_dst = Some(start.distance_to(&here));
+                        min_dst = Some(start.distance_length_to(&here));
                         min_pos = Some(here);
                     } else {
-                        let check_dst = start.distance_to(&here);
+                        let check_dst = start.distance_length_to(&here);
                         if check_dst < min_dst.unwrap() {
                             min_dst = Some(check_dst);
                             min_pos = Some(here);
