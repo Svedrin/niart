@@ -79,7 +79,7 @@ impl<'a> System<'a> for TrainRoutingSystem {
                 // 2. how far I'm travelling in that time is given by the velocity
                 // 3. thus t = v/a, distance = v * t -> distance = v^2/a
                 //    if we're closer than this distance, brake furiously
-                let braking_distance = engine.velocity.length().powi(2) / engine.acceleration.length();
+                let braking_distance = engine.velocity.length().powi(2) / engine.amax;
                 if distance < braking_distance {
                     engine.acceleration = direction.scale_to_length(-engine.amax);
                     continue;
