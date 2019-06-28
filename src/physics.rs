@@ -22,6 +22,14 @@ impl Vector {
             y: self.y * fac
         }
     }
+
+    pub fn limit(&self, max_length: f64) -> Self {
+        if self.length() < max_length {
+            self.clone()
+        } else {
+            self.scale_to_length(max_length)
+        }
+    }
 }
 
 #[derive(Clone,Debug,PartialEq)]

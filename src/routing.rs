@@ -1,5 +1,7 @@
 use specs::prelude::*;
 
+use super::physics::Vector;
+
 #[derive(Debug, Clone)]
 pub struct Junction {
     pub connections: Vec<Entity>
@@ -60,21 +62,36 @@ impl<'a> System<'a> for TrainRoutingSystem {
             if let Some(next_hop) = routing.next_hop {
                 let next_pos = positions.get(next_hop).unwrap();
                 println!("I'm in ur {:?}, going to {:?}", position, next_pos);
-                if position != next_pos {
-                    let dist = next_pos.distance_to(position);
-                    let distlen = dist.length();
-                    if distlen < 0.1 {
-                        // We'll consider this "arrived"
-                        engine.velocity = super::physics::Vector::zero();
-                        routing.next_hop = None;
-                        routing.destination = None;
-                    }
-                    if distlen < engine.vmax {
-                        engine.velocity = dist;
-                    } else {
-                        engine.velocity = dist.scale_to_length(engine.vmax);
-                    }
+                let direction = next_pos.distance_to(position);
+                let distance = direction.length();
+                if distance < 0.1 {
+                    // We'll consider this "arrived"
+                    engine.velocity = Vector::zero();
+                    engine.acceleration = Vector::zero();
+                    routing.next_hop = None;
+                    routing.destination = None;
+                    continue;
                 }
+
+                // Let's see how far before the next_hop we'll have to brake.
+                // 1. Number of accelerations I need to brake away is velocity/acceleration;
+                //    since acceleration = change in velocity per second, this is in seconds
+                // 2. how far I'm travelling in that time is given by the velocity
+                // 3. thus t = v/a, distance = v * t -> distance = v^2/a
+                //    if we're closer than this distance, brake furiously
+                let braking_distance = engine.velocity.length().powi(2) / engine.acceleration.length();
+                if distance < braking_distance {
+                    engine.acceleration = direction.scale_to_length(-engine.amax);
+                    continue;
+                }
+
+                // Ok, no need to brake. Let's see if we want to accelerate.
+                if engine.velocity.length() < engine.vmax {
+                    engine.acceleration = direction.scale_to_length(engine.amax);
+                    continue;
+                }
+
+                engine.acceleration = Vector::zero();
             }
         }
     }
