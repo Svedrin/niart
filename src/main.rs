@@ -74,7 +74,9 @@ fn main() {
     world.register::<cargo::CargoStorage>();
     world.register::<cargo::CargoProducer>();
     world.register::<cargo::CargoConsumer>();
-    world.register::<routing::TrainRouting>();
+    world.register::<routing::TrainIsInStation>();
+    world.register::<routing::TrainWantsToTravelTo>();
+    world.register::<routing::TrainRoute>();
     world.register::<Role>();
 
     world.add_resource(DeltaTime::new());
@@ -102,7 +104,7 @@ fn main() {
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
-        .with(routing::TrainRoutingSystem, "TrainRoutingSystem", &[])
+        .with(routing::TrainRouter, "TrainRouter", &[])
         .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
         .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])
         .build();
@@ -120,18 +122,15 @@ fn main() {
                 let positions = world.read_storage::<physics::Position>();
                 let junctions = world.read_storage::<routing::Junction>();
                 let lazyupdt = world.read_resource::<LazyUpdate>();
-                for (ent, pos, junction) in (&entities, &positions, &junctions).join() {
-                    if mouse_pos.distance_length_to(pos) < 10.0 {
-                        if let Some((next_hop, destination)) = junction.find_any_other_terminal(&junctions) {
-                            println!("Planting train at junction {:?} heading towards {:?}", ent, junction.connections[0]);
+                for (junction_ent, junction_pos, junction) in (&entities, &positions, &junctions).join() {
+                    if mouse_pos.distance_length_to(junction_pos) < 10.0 {
+                        if let Some(destination) = junction.find_any_other_terminal(&junctions) {
+                            println!("Planting train at junction {:?} heading towards {:?}", junction_ent, destination);
                             lazyupdt.create_entity(&entities)
-                                .with(pos.clone())
+                                .with(junction_pos.clone())
                                 .with(Role(RoleKind::Train))
-                                .with(routing::TrainRouting::with_destination(
-                                    ent,
-                                    next_hop,
-                                    destination
-                                ))
+                                .with(routing::TrainIsInStation { station: junction_ent })
+                                .with(routing::TrainWantsToTravelTo { destination: destination })
                                 .with(physics::TrainEngine {
                                     velocity:     physics::Vector { x:  0., y: 0. },
                                     acceleration: physics::Vector { x:  0., y: 0. },
@@ -140,7 +139,7 @@ fn main() {
                                 })
                                 .build();
                         } else {
-                            println!("Planting train at junction {:?} is not possible, junction does not have connections", ent);
+                            println!("Planting train at junction {:?} is not possible, junction does not have connections", junction_ent);
                         }
                     }
                 }

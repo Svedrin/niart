@@ -70,6 +70,30 @@ impl Component for Junction {
     type Storage = VecStorage<Self>;
 }
 
+#[derive(Debug, Clone)]
+pub struct TrainIsInStation {
+    pub station: Entity
+}
+impl Component for TrainIsInStation {
+    type Storage = HashMapStorage<Self>;
+}
+
+#[derive(Debug, Clone)]
+pub struct TrainWantsToTravelTo {
+    pub destination: Entity
+}
+impl Component for TrainWantsToTravelTo {
+    type Storage = HashMapStorage<Self>;
+}
+
+#[derive(Debug, Clone)]
+pub struct TrainRoute {
+    pub hops: Vec<Entity>
+}
+impl Component for TrainRoute {
+    type Storage = HashMapStorage<Self>;
+}
+
 
 #[derive(Debug)]
 pub struct TrainRouting {
@@ -92,8 +116,76 @@ impl Component for TrainRouting {
     type Storage = VecStorage<Self>;
 }
 
-pub struct TrainRoutingSystem;
 
+pub struct TrainRouter;
+
+impl<'a> System<'a> for TrainRouter {
+    type SystemData = (
+        Entities<'a>,
+        WriteStorage<'a, TrainIsInStation>,
+        WriteStorage<'a, TrainWantsToTravelTo>,
+        WriteStorage<'a, TrainRoute>,
+        ReadStorage<'a, Junction>,
+    );
+
+    fn run(&mut self, sys_data: Self::SystemData) {
+        let (
+            entities,
+            mut trains_in_station,
+            mut trains_that_want_to_travel,
+            mut routes,
+            junctions
+        ) = sys_data;
+        let mut trains_that_left_the_building = vec![];
+        for (train, station, destination) in (&entities, &trains_in_station, &trains_that_want_to_travel).join() {
+            // We're coming from station.station -> Entity -> Junction.
+            // We wanna go to destination.destination -> Entity -> Junction.
+            // station_junction hopefully has connections that have connections to dest_junction.
+            fn walk_the_line(
+                junctions: &ReadStorage<Junction>,
+                prev: Option<Entity>,
+                curr: Entity,
+                dest: Entity
+            ) -> Vec<Entity> {
+                let curr_j = junctions.get(curr).unwrap();
+                for &next in &curr_j.connections {
+                    if prev.is_some() && next == prev.unwrap() {
+                        continue;
+                    }
+                    if next == dest {
+                        return vec![dest];
+                    }
+                    let path_from_next = walk_the_line(junctions, Some(curr), next, dest);
+                    if !path_from_next.is_empty() {
+                        let mut path_from_here = Vec::with_capacity(path_from_next.len() + 1);
+                        path_from_here.push(next);
+                        path_from_here.extend_from_slice(&path_from_next);
+                        return path_from_here;
+                    }
+                }
+                vec![]
+            }
+            let path_to_dest = walk_the_line(
+                &junctions,
+                None,
+                station.station,
+                destination.destination
+            );
+            if !path_to_dest.is_empty() {
+                println!("Path to enlightenment: {:?}", path_to_dest);
+                routes.insert(train, TrainRoute { hops: path_to_dest })
+                    .expect("Mission impossible");
+                trains_that_left_the_building.push(train);
+            }
+        }
+        for train in trains_that_left_the_building {
+            trains_in_station.remove(train);
+            trains_that_want_to_travel.remove(train);
+        }
+    }
+}
+
+pub struct TrainRoutingSystem;
 
 impl<'a> System<'a> for TrainRoutingSystem {
     type SystemData = (
