@@ -1,5 +1,7 @@
 use specs::prelude::*;
 
+use super::routing::TrainRoute;
+
 #[derive(Clone,Debug,PartialEq)]
 pub struct Vector {
     pub x: f64,
@@ -126,6 +128,56 @@ impl<'a> System<'a> for TrainEngineSystem {
 
             position.x += engine.velocity.x * delta.fraction;
             position.y += engine.velocity.y * delta.fraction;
+        }
+    }
+}
+
+/**
+ * The Driver's job is simple:
+ * Go someplace, and be sure to start slowing down in time so you don't go too far and kill everyone.
+ */
+pub struct TrainDriver;
+
+impl<'a> System<'a> for TrainDriver {
+    type SystemData = (
+        Entities<'a>,                      // I'm a guy
+        ReadStorage<'a, Position>,         // I'm somewhere
+        WriteStorage<'a, TrainEngine>,     // I haz an engine that I can play with
+        ReadStorage<'a, TrainRoute>,       // I wanna go somewhere
+    );
+
+    fn run(&mut self, (entities, positions, mut engines, routes): Self::SystemData) {
+        for (train, train_pos, mut engine, route) in (&entities, &positions, &mut engines, &routes).join() {
+            let next_pos = positions.get(route.next_hop()).unwrap();
+            println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
+            let direction = next_pos.distance_to(train_pos);
+            let distance = direction.length();
+
+            if distance < 0.1 {
+                // We'll consider this "arrived"
+                engine.velocity = Vector::zero();
+                engine.acceleration = Vector::zero();
+            }
+
+            // Let's see how far before the next_hop we'll have to brake.
+            // 1. Number of accelerations I need to brake away is velocity/acceleration;
+            //    since acceleration = change in velocity per second, this is in seconds
+            // 2. how far I'm travelling in that time is given by the velocity
+            // 3. thus t = v/a, distance = v * t -> distance = v^2/a
+            //    if we're closer than this distance, brake furiously
+            let braking_distance = engine.velocity.length().powi(2) / engine.amax;
+            if distance < braking_distance {
+                engine.acceleration = direction.scale_to_length(-engine.amax);
+                continue;
+            }
+
+            // Ok, no need to brake. Let's see if we want to accelerate.
+            if engine.velocity.length() < engine.vmax {
+                engine.acceleration = direction.scale_to_length(engine.amax);
+                continue;
+            }
+
+            engine.acceleration = Vector::zero();
         }
     }
 }

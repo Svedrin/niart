@@ -104,6 +104,7 @@ fn main() {
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
+        .with(physics::TrainDriver, "TrainDriver", &[])
         .with(routing::TrainRouter, "TrainRouter", &[])
         .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
         .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])

@@ -90,6 +90,11 @@ impl Component for TrainWantsToTravelTo {
 pub struct TrainRoute {
     pub hops: Vec<Entity>
 }
+impl TrainRoute {
+    pub fn next_hop(&self) -> Entity {
+        self.hops[0]
+    }
+}
 impl Component for TrainRoute {
     type Storage = HashMapStorage<Self>;
 }
