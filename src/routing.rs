@@ -25,14 +25,14 @@ impl Junction {
 }
 
 impl<'a> Junction {
-    pub fn find_any_other_terminal(&self, junctions: &ReadStorage<'a, Junction>) -> Option<(Entity, Entity)> {
+    pub fn find_any_other_terminal(&self, junctions: &ReadStorage<'a, Junction>) -> Option<Entity> {
         for &next_hop_ent in &self.connections {
             let next_hop = junctions.get(next_hop_ent).unwrap();
             if next_hop.is_terminal {
-                return Some((next_hop_ent, next_hop_ent));
+                return Some(next_hop_ent);
             }
-            if let Some((_, dest_ent)) = next_hop.find_any_other_terminal(junctions) {
-                return Some((next_hop_ent, dest_ent));
+            if let Some(dest_ent) = next_hop.find_any_other_terminal(junctions) {
+                return Some(dest_ent);
             }
         }
         None
