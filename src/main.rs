@@ -124,7 +124,7 @@ fn main() {
                 let positions = world.read_storage::<physics::Position>();
                 let junctions = world.read_storage::<routing::Junction>();
                 let lazyupdt = world.read_resource::<LazyUpdate>();
-                for (junction, junction_pos) in (&entities, &positions).join() {
+                for (junction, junction_pos, _) in (&entities, &positions, &junctions).join() {
                     if mouse_pos.distance_length_to(junction_pos) < 10.0 {
                         fn find_any_other_terminal(
                             junctions: &ReadStorage<routing::Junction>,
