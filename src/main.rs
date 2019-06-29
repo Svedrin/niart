@@ -106,6 +106,7 @@ fn main() {
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
         .with(physics::TrainDriver, "TrainDriver", &[])
         .with(routing::TrainRouter, "TrainRouter", &[])
+        .with(routing::TrainNavigator, "TrainNavigator", &[])
         .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
         .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])
         .build();
@@ -123,14 +124,35 @@ fn main() {
                 let positions = world.read_storage::<physics::Position>();
                 let junctions = world.read_storage::<routing::Junction>();
                 let lazyupdt = world.read_resource::<LazyUpdate>();
-                for (junction_ent, junction_pos, junction) in (&entities, &positions, &junctions).join() {
+                for (junction, junction_pos) in (&entities, &positions).join() {
                     if mouse_pos.distance_length_to(junction_pos) < 10.0 {
-                        if let Some(destination) = junction.find_any_other_terminal(&junctions) {
-                            println!("Planting train at junction {:?} heading towards {:?}", junction_ent, destination);
+                        fn find_any_other_terminal(
+                            junctions: &ReadStorage<routing::Junction>,
+                            prev: Option<Entity>,
+                            curr: Entity,
+                        ) -> Option<Entity> {
+                            let curr_j = junctions.get(curr).expect("no curr");
+                            for &next in &curr_j.connections {
+                                if prev.is_some() && next == prev.expect("Split brain") {
+                                    continue;
+                                }
+                                let next_j = junctions.get(next).expect("no next");
+                                if next_j.is_terminal {
+                                    return Some(next);
+                                }
+                                let maybe_term = find_any_other_terminal(junctions, Some(curr), next);
+                                if maybe_term.is_some() {
+                                    return maybe_term;
+                                }
+                            }
+                            None
+                        }
+                        if let Some(destination) = find_any_other_terminal(&junctions, None, junction) {
+                            println!("Planting train at junction {:?} heading towards {:?}", junction, destination);
                             lazyupdt.create_entity(&entities)
                                 .with(junction_pos.clone())
                                 .with(Role(RoleKind::Train))
-                                .with(routing::TrainIsInStation { station: junction_ent })
+                                .with(routing::TrainIsInStation { station: junction })
                                 .with(routing::TrainWantsToTravelTo { destination: destination })
                                 .with(physics::TrainEngine {
                                     velocity:     physics::Vector { x:  0., y: 0. },
@@ -140,7 +162,7 @@ fn main() {
                                 })
                                 .build();
                         } else {
-                            println!("Planting train at junction {:?} is not possible, junction does not have connections", junction_ent);
+                            println!("Planting train at junction {:?} is not possible, junction does not have connections", junction);
                         }
                     }
                 }

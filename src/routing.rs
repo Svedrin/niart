@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use specs::prelude::*;
 
 use super::physics::Vector;
@@ -23,49 +24,6 @@ impl Junction {
         }
     }
 }
-
-impl<'a> Junction {
-    pub fn find_any_other_terminal(&self, junctions: &ReadStorage<'a, Junction>) -> Option<Entity> {
-        for &next_hop_ent in &self.connections {
-            let next_hop = junctions.get(next_hop_ent).unwrap();
-            if next_hop.is_terminal {
-                return Some(next_hop_ent);
-            }
-            if let Some(dest_ent) = next_hop.find_any_other_terminal(junctions) {
-                return Some(dest_ent);
-            }
-        }
-        None
-    }
-
-    pub fn next_hop_to_dest(&self, self_ent: Entity, from: Entity, dest: Entity, junctions: &ReadStorage<'a, Junction>) -> Option<(u32, Entity)> {
-        // Find connection with shortest distance to destination (if destination is reachable)
-        let mut min_distance = u32::max_value();
-        let mut candidate = None;
-        for &next_hop_ent in &self.connections {
-            if next_hop_ent == from {
-                continue;
-            }
-            if next_hop_ent == dest && min_distance > 1 {
-                min_distance = 1;
-                candidate = Some(next_hop_ent);
-                break; // Ain't gonna get better than a direct link
-            }
-            let next_hop = junctions.get(next_hop_ent).unwrap();
-            if let Some((distance, _)) = next_hop.next_hop_to_dest(next_hop_ent, self_ent, dest, junctions) {
-                if distance + 1 < min_distance {
-                    min_distance = distance + 1;
-                    candidate = Some(next_hop_ent);
-                }
-            }
-        }
-        if let Some(candidate) = candidate {
-            return Some((min_distance, candidate));
-        }
-        None
-    }
-}
-
 impl Component for Junction {
     type Storage = VecStorage<Self>;
 }
@@ -88,11 +46,22 @@ impl Component for TrainWantsToTravelTo {
 
 #[derive(Debug, Clone)]
 pub struct TrainRoute {
-    pub hops: Vec<Entity>
+    pub hops: VecDeque<Entity>
 }
 impl TrainRoute {
+    pub fn new(path: Vec<Entity>) -> Self {
+        Self {
+            hops: VecDeque::from(path)
+        }
+    }
     pub fn next_hop(&self) -> Entity {
         self.hops[0]
+    }
+    pub fn arrived_at_hop(&mut self) -> Entity {
+        self.hops.pop_front().expect("Sad panda")
+    }
+    pub fn is_empty(&self) -> bool {
+        self.hops.is_empty()
     }
 }
 impl Component for TrainRoute {
@@ -121,7 +90,10 @@ impl Component for TrainRouting {
     type Storage = VecStorage<Self>;
 }
 
-
+/**
+ * TrainRouter is on the lookout for trains that are in a station and that intend to travel
+ * to some destination. Then it calculates a route and sends the train on the road.
+ */
 pub struct TrainRouter;
 
 impl<'a> System<'a> for TrainRouter {
@@ -178,7 +150,8 @@ impl<'a> System<'a> for TrainRouter {
             );
             if !path_to_dest.is_empty() {
                 println!("Path to enlightenment: {:?}", path_to_dest);
-                routes.insert(train, TrainRoute { hops: path_to_dest })
+                routes
+                    .insert(train, TrainRoute::new(path_to_dest ))
                     .expect("Mission impossible");
                 trains_that_left_the_building.push(train);
             }
@@ -190,75 +163,42 @@ impl<'a> System<'a> for TrainRouter {
     }
 }
 
-pub struct TrainRoutingSystem;
 
-impl<'a> System<'a> for TrainRoutingSystem {
+/**
+ * TrainNavigator sits beside the TrainDriver and decides if we're close enough to the
+ * next hop that it makes sense to start thinking one step further.
+ */
+pub struct TrainNavigator;
+
+impl<'a> System<'a> for TrainNavigator {
     type SystemData = (
-        Entities<'a>,
-        ReadStorage<'a, super::physics::Position>,
-        WriteStorage<'a, super::physics::TrainEngine>,
-        WriteStorage<'a, TrainRouting>,
-        ReadStorage<'a, Junction>,
+        Entities<'a>,                               // I'm a guy
+        ReadStorage<'a, super::physics::Position>,  // I'm somewhere
+        WriteStorage<'a, TrainRoute>,               // I need to make sure my damn map is correct
+        WriteStorage<'a, TrainIsInStation>,         // I may or may not have gotten somewhere
     );
 
-    fn run(&mut self, (entities, positions, mut engines, mut routings, junctions): Self::SystemData) {
-        let mut arrived = vec![];
-        for (ent, position, mut engine, mut routing) in (&entities, &positions, &mut engines, &mut routings).join() {
-            let next_hop = routing.next_hop;
-            let next_junction = junctions.get(next_hop).unwrap();
-            let next_pos = positions.get(next_hop).unwrap();
-            println!("I'm in ur {:?}, going to {:?}", position, next_pos);
-            let direction = next_pos.distance_to(position);
+    fn run(&mut self, (entities, positions, mut routes, mut trains_in_station): Self::SystemData) {
+        let mut arrived_trains = vec![];
+        for (train, train_pos, route) in (&entities, &positions, &mut routes).join() {
+            let next_pos = positions.get(route.next_hop()).unwrap();
+            //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
+            let direction = next_pos.distance_to(train_pos);
             let distance = direction.length();
-
-            if distance < 0.1 {
+            if distance < 2.0 {
                 // We'll consider this "arrived"
-                engine.velocity = Vector::zero();
-                engine.acceleration = Vector::zero();
-
+                let here = route.arrived_at_hop();
                 // are we at the final destination?
-                if routing.next_hop == routing.destination {
-                    arrived.push(ent);
-                    continue;
-                } else {
-                    if let Some((_, next_hop)) =
-                        next_junction
-                            .next_hop_to_dest(
-                                next_hop,
-                                routing.coming_from,
-                                routing.destination,
-                                &junctions
-                            )
-                    {
-                        routing.next_hop = next_hop;
-                        routing.coming_from = ent;
-                    }
+                if route.is_empty() {
+                    arrived_trains.push(train);
+                    trains_in_station
+                        .insert(train, TrainIsInStation { station: here })
+                        .expect("station is full");
                 }
-                continue;
             }
-
-            // Let's see how far before the next_hop we'll have to brake.
-            // 1. Number of accelerations I need to brake away is velocity/acceleration;
-            //    since acceleration = change in velocity per second, this is in seconds
-            // 2. how far I'm travelling in that time is given by the velocity
-            // 3. thus t = v/a, distance = v * t -> distance = v^2/a
-            //    if we're closer than this distance, brake furiously
-            let braking_distance = engine.velocity.length().powi(2) / engine.amax;
-            if distance < braking_distance {
-                engine.acceleration = direction.scale_to_length(-engine.amax);
-                continue;
-            }
-
-            // Ok, no need to brake. Let's see if we want to accelerate.
-            if engine.velocity.length() < engine.vmax {
-                engine.acceleration = direction.scale_to_length(engine.amax);
-                continue;
-            }
-
-            engine.acceleration = Vector::zero();
         }
-        for ent in arrived {
-            routings.remove(ent);
+        for train in arrived_trains {
+            routes.remove(train);
         }
     }
 }

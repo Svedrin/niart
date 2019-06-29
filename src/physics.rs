@@ -1,6 +1,6 @@
 use specs::prelude::*;
 
-use super::routing::TrainRoute;
+use super::routing::{TrainRoute,TrainIsInStation};
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct Vector {
@@ -126,6 +126,8 @@ impl<'a> System<'a> for TrainEngineSystem {
             engine.velocity.x += engine.acceleration.x * delta.fraction;
             engine.velocity.y += engine.acceleration.y * delta.fraction;
 
+            // TODO: Being a machine that runs on rails, I should probably make sure I'm actually on the tracks
+
             position.x += engine.velocity.x * delta.fraction;
             position.y += engine.velocity.y * delta.fraction;
         }
@@ -144,20 +146,26 @@ impl<'a> System<'a> for TrainDriver {
         ReadStorage<'a, Position>,         // I'm somewhere
         WriteStorage<'a, TrainEngine>,     // I haz an engine that I can play with
         ReadStorage<'a, TrainRoute>,       // I wanna go somewhere
+        ReadStorage<'a, TrainIsInStation>, // or I'm in a station
     );
 
-    fn run(&mut self, (entities, positions, mut engines, routes): Self::SystemData) {
+    fn run(&mut self, sys_data: Self::SystemData) {
+        let (
+            entities,
+            positions,
+            mut engines,
+            routes,
+            trains_in_station
+        ) = sys_data;
+        // Open Road
         for (train, train_pos, mut engine, route) in (&entities, &positions, &mut engines, &routes).join() {
             let next_pos = positions.get(route.next_hop()).unwrap();
-            println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
+            //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
             let distance = direction.length();
 
-            if distance < 0.1 {
-                // We'll consider this "arrived"
-                engine.velocity = Vector::zero();
-                engine.acceleration = Vector::zero();
-            }
+            // Make sure we're going in the right direction
+            engine.velocity = direction.scale_to_length(engine.velocity.length());
 
             // Let's see how far before the next_hop we'll have to brake.
             // 1. Number of accelerations I need to brake away is velocity/acceleration;
@@ -177,6 +185,21 @@ impl<'a> System<'a> for TrainDriver {
                 continue;
             }
 
+            engine.acceleration = Vector::zero();
+        }
+        // In a station
+        for (train, train_pos, mut engine, station) in (&entities, &positions, &mut engines, &trains_in_station).join() {
+            let next_pos = positions.get(station.station).unwrap();
+            //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
+            let direction = next_pos.distance_to(train_pos);
+            let distance = direction.length();
+
+            if distance < 0.2 {
+                // We'll consider this "arrived"
+                engine.velocity = Vector::zero();
+            } else {
+                engine.velocity = direction; // -f
+            }
             engine.acceleration = Vector::zero();
         }
     }
