@@ -213,6 +213,7 @@ impl<'a> System<'a> for TrainNavigator {
                     train_blockages
                         .insert(train, TrainIsBlockingSignal { signal: here })
                         .expect("we're doomed, aren't we");
+                    let _ = speed_limits_current.remove(train);
                     if let Some(speed_limit) = speed_limits_upcoming.remove(train) {
                         let _ = speed_limits_current.insert(
                             train,
