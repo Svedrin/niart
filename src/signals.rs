@@ -50,6 +50,9 @@ impl JunctionSignal {
             appr_signals: vec![]
         }
     }
+    pub fn is_halt(&self) -> bool {
+        self.signal_state == SignalState::Halt
+    }
 }
 impl Component for JunctionSignal {
     type Storage = HashMapStorage<Self>;

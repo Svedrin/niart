@@ -1,6 +1,7 @@
 use specs::prelude::*;
 
 use super::routing::{TrainRoute,TrainIsInStation};
+use super::signals::JunctionSignal;
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct Vector {
@@ -142,6 +143,7 @@ impl<'a> System<'a> for TrainDriver {
         WriteStorage<'a, TrainEngine>,     // I haz an engine that I can play with
         ReadStorage<'a, TrainRoute>,       // I wanna go somewhere
         ReadStorage<'a, TrainIsInStation>, // or I'm in a station
+        ReadStorage<'a, JunctionSignal>,   // and I may be looking at a signal
     );
 
     fn run(&mut self, sys_data: Self::SystemData) {
@@ -149,14 +151,26 @@ impl<'a> System<'a> for TrainDriver {
             positions,
             mut engines,
             routes,
-            trains_in_station
+            trains_in_station,
+            junction_signals,
         ) = sys_data;
         // Open Road
         for (train_pos, mut engine, route) in (&positions, &mut engines, &routes).join() {
             let next_pos = positions.get(route.next_hop()).unwrap();
             //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
-            let distance = direction.length();
+
+            // Decide where it is that we need to stop next.
+            // If we're approaching a signal and that signal shows red, we'll need
+            // to stop some ways away in front of it, so that our Navigator doesn't
+            // conclude we passed it already and people don't get uncomfortable.
+            let distance =
+                if junction_signals.contains(route.next_hop()) &&
+                    junction_signals.get(route.next_hop()).unwrap().is_halt() {
+                    direction.length() - 12.0
+                } else {
+                    direction.length()
+                };
 
             // Make sure we're going in the right direction
             engine.velocity = direction.scale_to_length(engine.velocity.length());
