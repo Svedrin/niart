@@ -8,6 +8,11 @@ use super::physics::Position;
 
 pub enum MapEvent {
     NewRail(Position, Position),
+    // TODO the RandomEvent is never used and only exists because without it, some "if let"
+    // would raise an "Irrefutable Pattern" error.
+    // MapEvent probably does not need to exist, and we can just replace it altogether with
+    // NewRail. I just don't care enough to do it right now.
+    #[allow(dead_code)]
     RandomEvent
 }
 
