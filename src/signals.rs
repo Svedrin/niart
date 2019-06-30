@@ -132,16 +132,18 @@ impl<'a> System<'a> for Fahrdienstleiter {
                 // We're clear, allow the first signal to turn green...
                 signals_on_go.push(two_signals[0]);
                 // ... but let's also see if we need to inflict a speed limit on the train.
-                let distance = positions.get(two_signals[0]).unwrap().distance_to(
-                    positions.get(two_signals[1]).unwrap()
-                ).length() - 15.0;
-                // s = v²/a => v² = s*a => v = sqrt(s*a)
-                let vmax = (distance * ASSUMED_AMAX).sqrt();
-                if vmax < ASSUMED_VMAX {
-                    let _ = speed_limits_upcoming
-                        .insert(train, SpeedLimitFromNextSignal{vmax: vmax});
-                } else {
-                    let _ = speed_limits_upcoming.remove(train);
+                if !speed_limits_upcoming.contains(train) {
+                    let distance = positions.get(two_signals[0]).unwrap().distance_to(
+                        positions.get(two_signals[1]).unwrap()
+                    ).length() - 15.0;
+                    // s = v²/a => v² = s*a => v = sqrt(s*a)
+                    let vmax = (distance * ASSUMED_AMAX).sqrt();
+                    if vmax < ASSUMED_VMAX {
+                        let _ = speed_limits_upcoming
+                            .insert(train, SpeedLimitFromNextSignal { vmax: vmax });
+                    } else {
+                        let _ = speed_limits_upcoming.remove(train);
+                    }
                 }
             }
         }
