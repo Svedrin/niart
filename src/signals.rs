@@ -1,10 +1,6 @@
 use specs::prelude::*;
 
-#[derive(Clone,Debug,PartialEq)]
-pub enum RailBlockState {
-    Open,
-    Occupied(Entity),
-}
+use super::routing::TrainRoute;
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum SignalState {
@@ -26,7 +22,7 @@ pub enum SignalState {
  */
 #[derive(Debug, Clone, PartialEq)]
 pub struct ApproachSignal {
-    pub block_state: RailBlockState,
+    pub junction_signal: Entity,
 }
 impl Component for ApproachSignal {
     type Storage = HashMapStorage<Self>;
@@ -38,27 +34,39 @@ impl Component for ApproachSignal {
  */
 #[derive(Debug, Clone, PartialEq)]
 pub struct JunctionSignal {
-    pub block_state:  RailBlockState,
     pub signal_state: SignalState,
+    pub occupied_by:  Option<Entity>,
+    pub reserved_for: Option<Entity>,
     pub appr_signals: Vec<Entity>,
 }
 impl JunctionSignal {
     pub fn new() -> Self {
         Self {
-            block_state:  RailBlockState::Open,
             signal_state: SignalState::Halt,
+            occupied_by:  None,
+            reserved_for: None,
             appr_signals: vec![]
         }
     }
     pub fn is_halt(&self) -> bool {
-        self.signal_state == SignalState::Halt
+        self.signal_state == SignalState::Halt || self.signal_state == SignalState::Dark
+    }
+    pub fn passed_by(&mut self, train: Entity) {
+        assert_eq!(self.reserved_for, Some(train));
+        assert_eq!(self.occupied_by,  None);
+        self.reserved_for = None;
+        self.occupied_by = Some(train);
     }
 }
 impl Component for JunctionSignal {
     type Storage = HashMapStorage<Self>;
 }
 
-
+/**
+ * These two components exist for a train to announce what it thinks it's doing.
+ * Note that signals have their own idea of what's going on, and a signal will
+ * only turn green if what the trains announce matches its own understanding.
+ */
 pub struct TrainIsApproachingSignal {
     pub signal: Entity
 }
@@ -75,21 +83,29 @@ impl Component for TrainIsInBlockOfSignal {
 }
 
 
-pub struct SignalStateCalculator;
+pub struct Fahrdienstleiter;
 
-impl<'a> System<'a> for SignalStateCalculator {
+impl<'a> System<'a> for Fahrdienstleiter {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, JunctionSignal>,
         ReadStorage<'a, TrainIsApproachingSignal>,
         ReadStorage<'a, TrainIsInBlockOfSignal>,
+        ReadStorage<'a, TrainRoute>,
     );
 
-    fn run(&mut self, (entities, mut jsignals, trains_approaching, trains_blocking): Self::SystemData) {
-        for (signal, mut signal_s) in (&entities, &mut jsignals).join() {
+    fn run(&mut self, (entities, mut jsignals, trains_approaching, trains_blocking, routes): Self::SystemData) {
+        // Unfortunately, Rust's borrowing semantics forbid me from joining the Signals in here,
+        // because I need to access two signals at once, so I'd borrow the store twice.
+        for signal in (&entities).join() {
+            if !jsignals.contains(signal) { // this is not a signal
+                continue;
+            }
+
             // See what the world is doing
-            let approaching_train = (&trains_approaching).join()
-                .filter(|train_t| train_t.signal == signal)
+            let approaching_train = (&entities, &trains_approaching).join()
+                .filter(|(_, ta)| ta.signal == signal)
+                .map(|(t, _)| t)
                 .nth(0);
 
             let blocking_train = (&entities, &trains_blocking).join()
@@ -97,15 +113,45 @@ impl<'a> System<'a> for SignalStateCalculator {
                 .map(|(bt, _)| bt)
                 .nth(0);
 
-            // Now decide what this signal's state should be
+            // Now decide what this signal's state should be.
+            // First see if we need to make a reservation at the next signal on a train's route
+            let mut reserved_for_us = false;
+            if let Some(approaching_train) = approaching_train {
+                let route = routes.get(approaching_train).unwrap();
+                assert_eq!(route.hops[0], signal);
+                for &hop in route.hops.iter().skip(1) {
+                    if let Some(mut next_signal_j) = jsignals.get_mut(hop) {
+                        if let Some(reserved_for_train) = next_signal_j.reserved_for {
+                            reserved_for_us = reserved_for_train == approaching_train;
+                        } else {
+                            next_signal_j.reserved_for = Some(approaching_train);
+                            reserved_for_us = true;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // Now see if we're blocked by someone
+            let signal_s = jsignals.get_mut(signal).unwrap();
             if let Some(train) = blocking_train {
-                signal_s.block_state = RailBlockState::Occupied(train);
-                signal_s.signal_state = SignalState::Halt;
-            } else if approaching_train.is_some() {
-                signal_s.block_state = RailBlockState::Open;
-                signal_s.signal_state = SignalState::Go;
+                if signal_s.occupied_by.is_none() {
+                    signal_s.occupied_by = Some(train);
+                } else {
+                    assert_eq!(signal_s.occupied_by, Some(train));
+                }
             } else {
-                signal_s.block_state = RailBlockState::Open;
+                signal_s.occupied_by = None;
+            }
+
+            if signal_s.reserved_for.is_some() || signal_s.occupied_by.is_some() {
+                if !signal_s.occupied_by.is_some() && reserved_for_us {
+                    signal_s.signal_state = SignalState::Go;
+                }
+                else {
+                    signal_s.signal_state = SignalState::Halt;
+                }
+            } else {
                 signal_s.signal_state = SignalState::Dark;
             }
         }

@@ -137,7 +137,7 @@ fn main() {
         .with(physics::TrainDriver, "TrainDriver", &[])
         .with(routing::TrainRouter, "TrainRouter", &[])
         .with(routing::TrainNavigator, "TrainNavigator", &[])
-        .with(signals::SignalStateCalculator, "SignalStateCalculator", &[])
+        .with(signals::Fahrdienstleiter, "SignalStateCalculator", &[])
         .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
         .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])
         .with(SignalRenderer, "SignalRenderer", &[])

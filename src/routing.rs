@@ -87,6 +87,7 @@ impl<'a> System<'a> for TrainRouter {
         WriteStorage<'a, TrainWantsToTravelTo>,
         WriteStorage<'a, TrainRoute>,
         ReadStorage<'a, Junction>,
+        WriteStorage<'a, JunctionSignal>,
     );
 
     fn run(&mut self, sys_data: Self::SystemData) {
@@ -95,7 +96,8 @@ impl<'a> System<'a> for TrainRouter {
             mut trains_in_station,
             mut trains_that_want_to_travel,
             mut routes,
-            junctions
+            junctions,
+            mut jsignals,
         ) = sys_data;
         let mut trains_that_left_the_building = vec![];
         for (train, station, destination) in (&entities, &trains_in_station, &trains_that_want_to_travel).join() {
@@ -132,7 +134,17 @@ impl<'a> System<'a> for TrainRouter {
                 station.station,
                 destination.destination
             );
-            if !path_to_dest.is_empty() {
+            let mut reserved_for_us = false;
+            for &hop in &path_to_dest {
+                if let Some(mut next_signal_j) = jsignals.get_mut(hop) {
+                    if next_signal_j.reserved_for.is_none() {
+                        next_signal_j.reserved_for = Some(train);
+                        reserved_for_us = true;
+                    }
+                    break;
+                }
+            }
+            if !path_to_dest.is_empty() && reserved_for_us {
                 println!("Path to enlightenment: {:?}", path_to_dest);
                 routes
                     .insert(train, TrainRoute::new(path_to_dest ))
@@ -162,7 +174,7 @@ impl<'a> System<'a> for TrainNavigator {
         ReadStorage<'a, super::physics::Position>,  // I'm somewhere
         WriteStorage<'a, TrainRoute>,               // I need to make sure my damn map is correct
         WriteStorage<'a, TrainIsInStation>,         // I may or may not have gotten somewhere
-        ReadStorage<'a, JunctionSignal>,
+        WriteStorage<'a, JunctionSignal>,
         WriteStorage<'a, TrainIsInBlockOfSignal>,
         WriteStorage<'a, TrainIsApproachingSignal>,
     );
@@ -173,7 +185,7 @@ impl<'a> System<'a> for TrainNavigator {
             positions,
             mut routes,
             mut trains_in_station,
-            junction_signals,
+            mut junction_signals,
             mut trains_blocking,
             mut trains_approaching,
         ) = sys_data;
@@ -194,12 +206,13 @@ impl<'a> System<'a> for TrainNavigator {
                 // We'll consider this "arrived"
                 let here = route.arrived_at_hop();
                 // The signal that we once approached, we are now blocking
-                if junction_signals.contains(here) {
-                    let signal = trains_approaching
+                if let Some(mut jsignal) = junction_signals.get_mut(here) {
+                    trains_approaching
                         .remove(train).expect("no signalling");
                     trains_blocking
-                        .insert(train, TrainIsInBlockOfSignal { signal: signal.signal })
+                        .insert(train, TrainIsInBlockOfSignal { signal: here })
                         .expect("signal is broken");
+                    jsignal.passed_by(train);
                 }
                 // are we at the final destination?
                 if route.is_empty() {
