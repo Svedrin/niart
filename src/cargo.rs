@@ -4,12 +4,12 @@ use std::collections::HashMap;
 #[derive(Debug,PartialEq,Eq,Hash,Clone,Copy)]
 pub enum CargoKind {
     Coal,
-    Oil,
+    /*Oil,
     Fuel,
     Grain,
     Livestock,
     Logs,
-    Planks,
+    Planks,*/
 }
 
 #[derive(Debug)]
