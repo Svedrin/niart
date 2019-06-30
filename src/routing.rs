@@ -1,8 +1,6 @@
 use std::collections::VecDeque;
 use specs::prelude::*;
 
-use super::physics::Vector;
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Junction {
     pub connections: Vec<Entity>,
@@ -69,30 +67,14 @@ impl Component for TrainRoute {
 }
 
 
-#[derive(Debug)]
-pub struct TrainRouting {
-    pub destination: Entity,
-    pub next_hop:    Entity,
-    pub coming_from: Entity,
-}
-
-impl TrainRouting {
-    pub fn with_destination(last: Entity, next: Entity, dest: Entity) -> Self {
-        Self {
-            destination: dest,
-            next_hop:    next,
-            coming_from: last,
-        }
-    }
-}
-
-impl Component for TrainRouting {
-    type Storage = VecStorage<Self>;
-}
-
 /**
  * TrainRouter is on the lookout for trains that are in a station and that intend to travel
  * to some destination. Then it calculates a route and sends the train on the road.
+ *
+ * In the real world, this is probably done by a dispatcher and/or traffic superintendent.
+ * "Dispatcher" is just way too generic a word that I feel comfortable using it here,
+ * and the traffic superintendent does way more than just routing. Routing is just their
+ * first step, so calling this struct a "TrafficSuperintendent" feels wrong.
  */
 pub struct TrainRouter;
 
