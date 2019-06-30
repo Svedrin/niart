@@ -231,7 +231,7 @@ impl<'a> System<'a> for TrainDriver {
             }
 
             // Ok, no need to brake. Let's see if we want to accelerate.
-            if engine.velocity.length() < f64::min(v_target, v_upcoming) {
+            if engine.velocity.length() < v_target {
                 engine.acceleration = direction.scale_to_length(engine.amax);
                 continue;
             }
