@@ -93,15 +93,15 @@ impl<'a> System<'a> for SignalStateCalculator {
                 .nth(0);
 
             let blocking_train = (&entities, &trains_blocking).join()
-                .filter(|(bt, bt_bt)| bt_bt.signal == signal)
-                .map(|(bt, bt_bt)| bt)
+                .filter(|(_, bt_bt)| bt_bt.signal == signal)
+                .map(|(bt, _)| bt)
                 .nth(0);
 
             // Now decide what this signal's state should be
             if let Some(train) = blocking_train {
                 signal_s.block_state = RailBlockState::Occupied(train);
                 signal_s.signal_state = SignalState::Halt;
-            } else if let Some(train) = approaching_train {
+            } else if approaching_train.is_some() {
                 signal_s.block_state = RailBlockState::Open;
                 signal_s.signal_state = SignalState::Go;
             } else {
