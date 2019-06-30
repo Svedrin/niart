@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 use specs::prelude::*;
 
+use super::signals::{JunctionSignal, TrainIsInBlockOfSignal, TrainIsApproachingSignal};
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Junction {
     pub connections: Vec<Entity>,
@@ -149,6 +151,8 @@ impl<'a> System<'a> for TrainRouter {
 /**
  * TrainNavigator sits beside the TrainDriver and decides if we're close enough to the
  * next hop that it makes sense to start thinking one step further.
+ * He (or she) also makes sure that our train always correctly announces which signals
+ * it's currently interacting with.
  */
 pub struct TrainNavigator;
 
@@ -158,11 +162,30 @@ impl<'a> System<'a> for TrainNavigator {
         ReadStorage<'a, super::physics::Position>,  // I'm somewhere
         WriteStorage<'a, TrainRoute>,               // I need to make sure my damn map is correct
         WriteStorage<'a, TrainIsInStation>,         // I may or may not have gotten somewhere
+        ReadStorage<'a, JunctionSignal>,
+        WriteStorage<'a, TrainIsInBlockOfSignal>,
+        WriteStorage<'a, TrainIsApproachingSignal>,
     );
 
-    fn run(&mut self, (entities, positions, mut routes, mut trains_in_station): Self::SystemData) {
+    fn run(&mut self, sys_data: Self::SystemData) {
+        let (
+            entities,
+            positions,
+            mut routes,
+            mut trains_in_station,
+            junction_signals,
+            mut trains_blocking,
+            mut trains_approaching,
+        ) = sys_data;
         let mut arrived_trains = vec![];
         for (train, train_pos, route) in (&entities, &positions, &mut routes).join() {
+            // Make sure we _always_ announce which signal we're on our way to
+            if !trains_approaching.contains(train) && junction_signals.contains(route.next_hop()) {
+                trains_approaching
+                    .insert(train, TrainIsApproachingSignal { signal: route.next_hop() })
+                    .expect("signal is broken");
+            }
+
             let next_pos = positions.get(route.next_hop()).unwrap();
             //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
@@ -170,6 +193,14 @@ impl<'a> System<'a> for TrainNavigator {
             if distance < 2.0 {
                 // We'll consider this "arrived"
                 let here = route.arrived_at_hop();
+                // The signal that we once approached, we are now blocking
+                if junction_signals.contains(here) {
+                    let signal = trains_approaching
+                        .remove(train).expect("no signalling");
+                    trains_blocking
+                        .insert(train, TrainIsInBlockOfSignal { signal: signal.signal })
+                        .expect("signal is broken");
+                }
                 // are we at the final destination?
                 if route.is_empty() {
                     arrived_trains.push(train);

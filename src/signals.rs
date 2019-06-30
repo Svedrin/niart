@@ -8,7 +8,7 @@ pub enum RailBlockState {
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum SignalState {
-    Off,
+    Dark,
     Halt,
     Slow,
     Go,
@@ -69,4 +69,42 @@ pub struct TrainIsInBlockOfSignal {
 }
 impl Component for TrainIsInBlockOfSignal {
     type Storage = HashMapStorage<Self>;
+}
+
+
+pub struct SignalStateCalculator;
+
+impl<'a> System<'a> for SignalStateCalculator {
+    type SystemData = (
+        Entities<'a>,
+        WriteStorage<'a, JunctionSignal>,
+        ReadStorage<'a, TrainIsApproachingSignal>,
+        ReadStorage<'a, TrainIsInBlockOfSignal>,
+    );
+
+    fn run(&mut self, (entities, mut jsignals, trains_approaching, trains_blocking): Self::SystemData) {
+        for (signal, mut signal_s) in (&entities, &mut jsignals).join() {
+            // See what the world is doing
+            let approaching_train = (&trains_approaching).join()
+                .filter(|train_t| train_t.signal == signal)
+                .nth(0);
+
+            let blocking_train = (&entities, &trains_blocking).join()
+                .filter(|(bt, bt_bt)| bt_bt.signal == signal)
+                .map(|(bt, bt_bt)| bt)
+                .nth(0);
+
+            // Now decide what this signal's state should be
+            if let Some(train) = blocking_train {
+                signal_s.block_state = RailBlockState::Occupied(train);
+                signal_s.signal_state = SignalState::Halt;
+            } else if let Some(train) = approaching_train {
+                signal_s.block_state = RailBlockState::Open;
+                signal_s.signal_state = SignalState::Go;
+            } else {
+                signal_s.block_state = RailBlockState::Open;
+                signal_s.signal_state = SignalState::Dark;
+            }
+        }
+    }
 }

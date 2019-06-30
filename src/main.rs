@@ -47,7 +47,7 @@ enum RoleKind {
     CoalMine,
     PowerPlant,
     WayPoint,
-    OffSignal,
+    DarkSignal,
     RedSignal,
     YellowSignal,
     GreenSignal,
@@ -72,7 +72,7 @@ impl<'a> System<'a> for SignalRenderer {
     fn run(&mut self, (signals, mut roles): Self::SystemData) {
         for (signal, mut role) in (&signals, &mut roles).join() {
             role.0 = match signal.signal_state {
-                signals::SignalState::Off  => RoleKind::OffSignal,
+                signals::SignalState::Dark => RoleKind::DarkSignal,
                 signals::SignalState::Halt => RoleKind::RedSignal,
                 signals::SignalState::Slow => RoleKind::YellowSignal,
                 signals::SignalState::Go   => RoleKind::GreenSignal,
@@ -137,6 +137,7 @@ fn main() {
         .with(physics::TrainDriver, "TrainDriver", &[])
         .with(routing::TrainRouter, "TrainRouter", &[])
         .with(routing::TrainNavigator, "TrainNavigator", &[])
+        .with(signals::SignalStateCalculator, "SignalStateCalculator", &[])
         .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
         .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])
         .with(SignalRenderer, "SignalRenderer", &[])
@@ -284,7 +285,7 @@ fn main() {
                         Role(RoleKind::CoalMine)     => [0.2, 0.2, 0.2, 1.],
                         Role(RoleKind::PowerPlant)   => [0.7, 0.7, 0.7, 1.],
                         Role(RoleKind::Train)        => [0.,  0.,  1.,  1.],
-                        Role(RoleKind::OffSignal)    => [0.,  0.,  0.,  1.],
+                        Role(RoleKind::DarkSignal)   => [0.,  0.,  0.,  1.],
                         Role(RoleKind::RedSignal)    => [1.,  0.,  0.,  1.],
                         Role(RoleKind::YellowSignal) => [0.9, 0.9, 0.,  1.],
                         Role(RoleKind::GreenSignal)  => [0.,  1.,  0.,  1.],
