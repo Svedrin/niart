@@ -1,11 +1,13 @@
 use std::collections::VecDeque;
 use specs::prelude::*;
 
+use super::physics::SpeedLimit;
 use super::signals::{
     JunctionSignal,
     SignalIsReservedByTrain,
     SignalIsBlockedByTrain,
     TrainIsBlockingSignal,
+    SpeedLimitFromNextSignal,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -171,6 +173,8 @@ impl<'a> System<'a> for TrainNavigator {
         WriteStorage<'a, TrainIsBlockingSignal>,
         WriteStorage<'a, SignalIsBlockedByTrain>,
         WriteStorage<'a, SignalIsReservedByTrain>,
+        WriteStorage<'a, SpeedLimitFromNextSignal>,
+        WriteStorage<'a, SpeedLimit>,
     );
 
     fn run(&mut self, sys_data: Self::SystemData) {
@@ -183,6 +187,8 @@ impl<'a> System<'a> for TrainNavigator {
             mut train_blockages,
             mut signal_blockages,
             mut reservations,
+            mut speed_limits_upcoming,
+            mut speed_limits_current,
         ) = sys_data;
         let mut arrived_trains = vec![];
         for (train, train_pos, route) in (&entities, &positions, &mut routes).join() {
@@ -207,6 +213,12 @@ impl<'a> System<'a> for TrainNavigator {
                     train_blockages
                         .insert(train, TrainIsBlockingSignal { signal: here })
                         .expect("we're doomed, aren't we");
+                    if let Some(speed_limit) = speed_limits_upcoming.remove(train) {
+                        let _ = speed_limits_current.insert(
+                            train,
+                            SpeedLimit { vmax: speed_limit.vmax }
+                        );
+                    }
                 }
                 // are we at the final destination?
                 if route.is_empty() {

@@ -96,10 +96,12 @@ fn main() {
     let mut world = World::new();
     world.register::<physics::Position>();
     world.register::<physics::TrainEngine>();
+    world.register::<physics::SpeedLimit>();
     world.register::<routing::Junction>();
     world.register::<signals::JunctionSignal>();
     world.register::<signals::ApproachSignal>();
     world.register::<signals::TrainIsBlockingSignal>();
+    world.register::<signals::SpeedLimitFromNextSignal>();
     world.register::<cargo::CargoStorage>();
     world.register::<cargo::CargoProducer>();
     world.register::<cargo::CargoConsumer>();

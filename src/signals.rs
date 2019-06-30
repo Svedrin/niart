@@ -1,5 +1,6 @@
 use specs::prelude::*;
 
+use super::physics::Position;
 use super::routing::TrainRoute;
 
 #[derive(Clone,Debug,PartialEq)]
@@ -73,6 +74,17 @@ impl Component for SignalIsBlockedByTrain {
     type Storage = HashMapStorage<Self>;
 }
 
+pub struct SpeedLimitFromNextSignal {
+    pub vmax: f64
+}
+impl Component for SpeedLimitFromNextSignal {
+    type Storage = HashMapStorage<Self>;
+}
+
+
+const ASSUMED_VMAX:  f64 = 30.0;
+const VMAX_FOR_SLOW: f64 = 20.0;
+const ASSUMED_AMAX:  f64 =  4.0;
 
 pub struct Fahrdienstleiter;
 
@@ -80,12 +92,14 @@ impl<'a> System<'a> for Fahrdienstleiter {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, JunctionSignal>,
-        ReadStorage<'a, TrainRoute>,
+        ReadStorage<'a,  TrainRoute>,
         WriteStorage<'a, SignalIsReservedByTrain>,
         WriteStorage<'a, SignalIsBlockedByTrain>,
+        ReadStorage<'a,  Position>,
+        WriteStorage<'a, SpeedLimitFromNextSignal>,
     );
 
-    fn run(&mut self, (entities, mut junction_signals, routes, mut reservations, blockages): Self::SystemData) {
+    fn run(&mut self, (entities, mut junction_signals, routes, mut reservations, blockages, positions, mut speed_limits_upcoming): Self::SystemData) {
         // Phase one: Let's go over all'a dem trains and see what we can do for them in terms
         // of signal reservations.
         // Each train that is en route wants to have two reservations: One for the signal where
@@ -115,8 +129,20 @@ impl<'a> System<'a> for Fahrdienstleiter {
                 rsvp_count += 1;
             }
             if rsvp_count == 2 {
-                // We're clear, allow the first signal to turn green.
+                // We're clear, allow the first signal to turn green...
                 signals_on_go.push(two_signals[0]);
+                // ... but let's also see if we need to inflict a speed limit on the train.
+                let distance = positions.get(two_signals[0]).unwrap().distance_to(
+                    positions.get(two_signals[1]).unwrap()
+                ).length() - 15.0;
+                // s = v²/a => v² = s*a => v = sqrt(s*a)
+                let vmax = (distance * ASSUMED_AMAX).sqrt();
+                if vmax < ASSUMED_VMAX {
+                    let _ = speed_limits_upcoming
+                        .insert(train, SpeedLimitFromNextSignal{vmax: vmax});
+                } else {
+                    let _ = speed_limits_upcoming.remove(train);
+                }
             }
         }
 
@@ -133,9 +159,16 @@ impl<'a> System<'a> for Fahrdienstleiter {
             // I do if a train has reserved _me_, because I'll need to tell that train what to do.
             // I'll tell them to stop, unless they have a valid reservation for the next signal
             // down the line.
-            if reservations.contains(signal) {
+            if let Some(rsvp) = reservations.get(signal) {
                 if signals_on_go.contains(&signal) {
-                    signal_s.signal_state = SignalState::Go;
+                    let slow = speed_limits_upcoming.get(rsvp.train)
+                        .and_then(|limit| Some(limit.vmax < VMAX_FOR_SLOW))
+                        .unwrap_or(false);
+                    if slow {
+                        signal_s.signal_state = SignalState::Slow;
+                    } else {
+                        signal_s.signal_state = SignalState::Go;
+                    }
                 } else {
                     signal_s.signal_state = SignalState::Halt;
                 }

@@ -1,7 +1,7 @@
 use specs::prelude::*;
 
 use super::routing::{TrainRoute,TrainIsInStation};
-use super::signals::JunctionSignal;
+use super::signals::{JunctionSignal, SpeedLimitFromNextSignal};
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct Vector {
@@ -97,6 +97,13 @@ impl Component for Position {
 }
 
 
+pub struct SpeedLimit {
+    pub vmax: f64
+}
+impl Component for SpeedLimit {
+    type Storage = HashMapStorage<Self>;
+}
+
 #[derive(Debug)]
 pub struct TrainEngine {
     pub velocity:     Vector,
@@ -139,23 +146,29 @@ pub struct TrainDriver;
 
 impl<'a> System<'a> for TrainDriver {
     type SystemData = (
+        Entities<'a>,                      // I'm a guy
         ReadStorage<'a, Position>,         // I'm somewhere
         WriteStorage<'a, TrainEngine>,     // I haz an engine that I can play with
         ReadStorage<'a, TrainRoute>,       // I wanna go somewhere
         ReadStorage<'a, TrainIsInStation>, // or I'm in a station
         ReadStorage<'a, JunctionSignal>,   // and I may be looking at a signal
+        ReadStorage<'a, SpeedLimit>,
+        ReadStorage<'a, SpeedLimitFromNextSignal>,
     );
 
     fn run(&mut self, sys_data: Self::SystemData) {
         let (
+            entities,
             positions,
             mut engines,
             routes,
             trains_in_station,
             junction_signals,
+            speed_limits_current,
+            speed_limits_upcoming,
         ) = sys_data;
         // Open Road
-        for (train_pos, mut engine, route) in (&positions, &mut engines, &routes).join() {
+        for (train, train_pos, mut engine, route) in (&entities, &positions, &mut engines, &routes).join() {
             let next_pos = positions.get(route.next_hop()).unwrap();
             //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
@@ -164,31 +177,61 @@ impl<'a> System<'a> for TrainDriver {
             // If we're approaching a signal and that signal shows red, we'll need
             // to stop some ways away in front of it, so that our Navigator doesn't
             // conclude we passed it already and people don't get uncomfortable.
-            let distance =
-                if junction_signals.contains(route.next_hop()) &&
-                    junction_signals.get(route.next_hop()).unwrap().is_halt() {
-                    direction.length() - 12.0
-                } else {
-                    direction.length()
-                };
+            let distance = direction.length();
 
-            // Make sure we're going in the right direction
+            // Make sure we're going in the right direction.
             engine.velocity = direction.scale_to_length(engine.velocity.length());
 
-            // Let's see how far before the next_hop we'll have to brake.
-            // 1. Number of accelerations I need to brake away is velocity/acceleration;
-            //    since acceleration = change in velocity per second, this is in seconds
-            // 2. how far I'm travelling in that time is given by the velocity
-            // 3. thus t = v/a, distance = v * t -> distance = v^2/a
-            //    if we're closer than this distance, brake furiously
-            let braking_distance = engine.velocity.length().powi(2) / engine.amax;
-            if distance < braking_distance {
+            // What speed should we be going?
+            let v_target =
+                // Has Fahrdienstleiter told us anything?
+                if let Some(limit) = speed_limits_current.get(train) {
+                    limit.vmax
+                } else {
+                    engine.vmax
+                };
+
+            // if we're doing more than that already, no need to bother with anything else -> brake
+            if engine.velocity.length() > v_target {
                 engine.acceleration = direction.scale_to_length(-engine.amax);
                 continue;
             }
 
+            // Let's see if going vmax is safe. It is if we can stop in time for the next signal.
+            // Find out if that means braking to zero, or if we just need to slow down.
+            let v_upcoming =
+                if junction_signals
+                    .get(route.next_hop())
+                    .map_or(false, |sig| sig.is_halt()) {
+                    // First, we look at the signal. If signal says stop, we stop.
+                    0.0
+                } else if let Some(limit) = speed_limits_upcoming.get(train) {
+                    // Then we ask the Fahrdienstleiter.
+                    limit.vmax
+                } else {
+                    // If all else fails, yolo
+                    engine.vmax
+                };
+
+            // If we're going that speed or below, no need to worry.
+            // Otherwise, we need to act.
+            if engine.velocity.length() > v_upcoming {
+                // Ok, it seems we need to slow down in time for the next signal.
+                // Let's find out how far that is away.
+                // 1. Number of accelerations I need to brake away is velocity/acceleration;
+                //    since acceleration = change in velocity per second, this is in seconds
+                // 2. how far I'm travelling in that time is given by the velocity
+                // 3. thus t = v/a, s = v * t -> s = v²/a
+                //    if we're closer than this distance, brake furiously
+                let braking_distance = ((engine.velocity.length() - v_upcoming).powi(2) / engine.amax) + 12.0;
+                if distance < braking_distance {
+                    engine.acceleration = direction.scale_to_length(-engine.amax);
+                    continue;
+                }
+            }
+
             // Ok, no need to brake. Let's see if we want to accelerate.
-            if engine.velocity.length() < engine.vmax {
+            if engine.velocity.length() < f64::min(v_target, v_upcoming) {
                 engine.acceleration = direction.scale_to_length(engine.amax);
                 continue;
             }
