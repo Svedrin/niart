@@ -1,7 +1,12 @@
 use std::collections::VecDeque;
 use specs::prelude::*;
 
-use super::signals::{JunctionSignal, TrainIsInBlockOfSignal, TrainIsApproachingSignal};
+use super::signals::{
+    JunctionSignal,
+    SignalIsReservedByTrain,
+    SignalIsBlockedByTrain,
+    TrainIsBlockingSignal,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Junction {
@@ -87,7 +92,6 @@ impl<'a> System<'a> for TrainRouter {
         WriteStorage<'a, TrainWantsToTravelTo>,
         WriteStorage<'a, TrainRoute>,
         ReadStorage<'a, Junction>,
-        WriteStorage<'a, JunctionSignal>,
     );
 
     fn run(&mut self, sys_data: Self::SystemData) {
@@ -97,7 +101,6 @@ impl<'a> System<'a> for TrainRouter {
             mut trains_that_want_to_travel,
             mut routes,
             junctions,
-            mut jsignals,
         ) = sys_data;
         let mut trains_that_left_the_building = vec![];
         for (train, station, destination) in (&entities, &trains_in_station, &trains_that_want_to_travel).join() {
@@ -134,17 +137,7 @@ impl<'a> System<'a> for TrainRouter {
                 station.station,
                 destination.destination
             );
-            let mut reserved_for_us = false;
-            for &hop in &path_to_dest {
-                if let Some(mut next_signal_j) = jsignals.get_mut(hop) {
-                    if next_signal_j.reserved_for.is_none() {
-                        next_signal_j.reserved_for = Some(train);
-                        reserved_for_us = true;
-                    }
-                    break;
-                }
-            }
-            if !path_to_dest.is_empty() && reserved_for_us {
+            if !path_to_dest.is_empty() {
                 println!("Path to enlightenment: {:?}", path_to_dest);
                 routes
                     .insert(train, TrainRoute::new(path_to_dest ))
@@ -175,8 +168,9 @@ impl<'a> System<'a> for TrainNavigator {
         WriteStorage<'a, TrainRoute>,               // I need to make sure my damn map is correct
         WriteStorage<'a, TrainIsInStation>,         // I may or may not have gotten somewhere
         WriteStorage<'a, JunctionSignal>,
-        WriteStorage<'a, TrainIsInBlockOfSignal>,
-        WriteStorage<'a, TrainIsApproachingSignal>,
+        WriteStorage<'a, TrainIsBlockingSignal>,
+        WriteStorage<'a, SignalIsBlockedByTrain>,
+        WriteStorage<'a, SignalIsReservedByTrain>,
     );
 
     fn run(&mut self, sys_data: Self::SystemData) {
@@ -185,19 +179,13 @@ impl<'a> System<'a> for TrainNavigator {
             positions,
             mut routes,
             mut trains_in_station,
-            mut junction_signals,
-            mut trains_blocking,
-            mut trains_approaching,
+            junction_signals,
+            mut train_blockages,
+            mut signal_blockages,
+            mut reservations,
         ) = sys_data;
         let mut arrived_trains = vec![];
         for (train, train_pos, route) in (&entities, &positions, &mut routes).join() {
-            // Make sure we _always_ announce which signal we're on our way to
-            if !trains_approaching.contains(train) && junction_signals.contains(route.next_hop()) {
-                trains_approaching
-                    .insert(train, TrainIsApproachingSignal { signal: route.next_hop() })
-                    .expect("signal is broken");
-            }
-
             let next_pos = positions.get(route.next_hop()).unwrap();
             //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
@@ -206,13 +194,19 @@ impl<'a> System<'a> for TrainNavigator {
                 // We'll consider this "arrived"
                 let here = route.arrived_at_hop();
                 // The signal that we once approached, we are now blocking
-                if let Some(mut jsignal) = junction_signals.get_mut(here) {
-                    trains_approaching
-                        .remove(train).expect("no signalling");
-                    trains_blocking
-                        .insert(train, TrainIsInBlockOfSignal { signal: here })
-                        .expect("signal is broken");
-                    jsignal.passed_by(train);
+                if junction_signals.contains(here) {
+                    if let Some(train_blockage) = train_blockages.remove(train) {
+                        signal_blockages.remove(train_blockage.signal);
+                    }
+                    reservations
+                        .remove(here)
+                        .expect("couldn't remove registration o_0");
+                    signal_blockages
+                        .insert(here, SignalIsBlockedByTrain { train: train })
+                        .expect("couldn't block next signal");
+                    train_blockages
+                        .insert(train, TrainIsBlockingSignal { signal: here })
+                        .expect("we're doomed, aren't we");
                 }
                 // are we at the final destination?
                 if route.is_empty() {

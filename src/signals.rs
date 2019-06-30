@@ -35,50 +35,41 @@ impl Component for ApproachSignal {
 #[derive(Debug, Clone, PartialEq)]
 pub struct JunctionSignal {
     pub signal_state: SignalState,
-    pub occupied_by:  Option<Entity>,
-    pub reserved_for: Option<Entity>,
     pub appr_signals: Vec<Entity>,
 }
 impl JunctionSignal {
     pub fn new() -> Self {
         Self {
             signal_state: SignalState::Halt,
-            occupied_by:  None,
-            reserved_for: None,
             appr_signals: vec![]
         }
     }
     pub fn is_halt(&self) -> bool {
         self.signal_state == SignalState::Halt || self.signal_state == SignalState::Dark
     }
-    pub fn passed_by(&mut self, train: Entity) {
-        assert_eq!(self.reserved_for, Some(train));
-        assert_eq!(self.occupied_by,  None);
-        self.reserved_for = None;
-        self.occupied_by = Some(train);
-    }
 }
 impl Component for JunctionSignal {
     type Storage = HashMapStorage<Self>;
 }
 
-/**
- * These two components exist for a train to announce what it thinks it's doing.
- * Note that signals have their own idea of what's going on, and a signal will
- * only turn green if what the trains announce matches its own understanding.
- */
-pub struct TrainIsApproachingSignal {
+pub struct TrainIsBlockingSignal {
     pub signal: Entity
 }
-impl Component for TrainIsApproachingSignal {
+impl Component for TrainIsBlockingSignal {
     type Storage = HashMapStorage<Self>;
 }
 
-
-pub struct TrainIsInBlockOfSignal {
-    pub signal: Entity
+pub struct SignalIsReservedByTrain {
+    pub train: Entity
 }
-impl Component for TrainIsInBlockOfSignal {
+impl Component for SignalIsReservedByTrain {
+    type Storage = HashMapStorage<Self>;
+}
+
+pub struct SignalIsBlockedByTrain {
+    pub train: Entity
+}
+impl Component for SignalIsBlockedByTrain {
     type Storage = HashMapStorage<Self>;
 }
 
@@ -89,71 +80,70 @@ impl<'a> System<'a> for Fahrdienstleiter {
     type SystemData = (
         Entities<'a>,
         WriteStorage<'a, JunctionSignal>,
-        ReadStorage<'a, TrainIsApproachingSignal>,
-        ReadStorage<'a, TrainIsInBlockOfSignal>,
         ReadStorage<'a, TrainRoute>,
+        WriteStorage<'a, SignalIsReservedByTrain>,
+        WriteStorage<'a, SignalIsBlockedByTrain>,
     );
 
-    fn run(&mut self, (entities, mut jsignals, trains_approaching, trains_blocking, routes): Self::SystemData) {
-        // Unfortunately, Rust's borrowing semantics forbid me from joining the Signals in here,
-        // because I need to access two signals at once, so I'd borrow the store twice.
-        for signal in (&entities).join() {
-            if !jsignals.contains(signal) { // this is not a signal
+    fn run(&mut self, (entities, mut junction_signals, routes, mut reservations, blockages): Self::SystemData) {
+        // Phase one: Let's go over all'a dem trains and see what we can do for them in terms
+        // of signal reservations.
+        // Each train that is en route wants to have two reservations: One for the signal where
+        // it's currently located (it should have that one inherently), and another one for the
+        // signal that comes _after_ the first one, so that the first one can turn green and
+        // allow the train to set forth on its journey.
+        let mut signals_on_go = vec![];
+        for (train, route) in (&entities, &routes).join() {
+            let two_signals: Vec<Entity> = route.hops.iter()
+                .filter(|&&e| junction_signals.contains(e))
+                .take(2)
+                .cloned()
+                .collect();
+            let mut rsvp_count = 0;
+            for &signal in &two_signals {
+                if let Some(rsvp) = reservations.get(signal) {
+                    // Make sure we don't try to reserve the second signal if we don't have a
+                    // valid reservation for the first one.
+                    if rsvp.train != train {
+                        break;
+                    }
+                } else {
+                    reservations
+                        .insert(signal, SignalIsReservedByTrain { train: train })
+                        .expect("rsvp denied");
+                }
+                rsvp_count += 1;
+            }
+            if rsvp_count == 2 {
+                // We're clear, allow the first signal to turn green.
+                signals_on_go.push(two_signals[0]);
+            }
+        }
+
+        // So now that we have the reservations booked, let's see what those signals need
+        // to be telling our trains.
+        for (signal, mut signal_s) in (&entities, &mut junction_signals).join() {
+            // First of all: If I'm blocked, I'll show red.
+            if blockages.contains(signal) {
+                signal_s.signal_state = SignalState::Halt;
                 continue;
             }
 
-            // See what the world is doing
-            let approaching_train = (&entities, &trains_approaching).join()
-                .filter(|(_, ta)| ta.signal == signal)
-                .map(|(t, _)| t)
-                .nth(0);
-
-            let blocking_train = (&entities, &trains_blocking).join()
-                .filter(|(_, bt_bt)| bt_bt.signal == signal)
-                .map(|(bt, _)| bt)
-                .nth(0);
-
-            // Now decide what this signal's state should be.
-            // First see if we need to make a reservation at the next signal on a train's route
-            let mut reserved_for_us = false;
-            if let Some(approaching_train) = approaching_train {
-                let route = routes.get(approaching_train).unwrap();
-                assert_eq!(route.hops[0], signal);
-                for &hop in route.hops.iter().skip(1) {
-                    if let Some(mut next_signal_j) = jsignals.get_mut(hop) {
-                        if let Some(reserved_for_train) = next_signal_j.reserved_for {
-                            reserved_for_us = reserved_for_train == approaching_train;
-                        } else {
-                            next_signal_j.reserved_for = Some(approaching_train);
-                            reserved_for_us = true;
-                        }
-                        break;
-                    }
-                }
-            }
-
-            // Now see if we're blocked by someone
-            let signal_s = jsignals.get_mut(signal).unwrap();
-            if let Some(train) = blocking_train {
-                if signal_s.occupied_by.is_none() {
-                    signal_s.occupied_by = Some(train);
-                } else {
-                    assert_eq!(signal_s.occupied_by, Some(train));
-                }
-            } else {
-                signal_s.occupied_by = None;
-            }
-
-            if signal_s.reserved_for.is_some() || signal_s.occupied_by.is_some() {
-                if !signal_s.occupied_by.is_some() && reserved_for_us {
+            // I'm not. Do I have reason to still be on?
+            // I do if a train has reserved _me_, because I'll need to tell that train what to do.
+            // I'll tell them to stop, unless they have a valid reservation for the next signal
+            // down the line.
+            if reservations.contains(signal) {
+                if signals_on_go.contains(&signal) {
                     signal_s.signal_state = SignalState::Go;
-                }
-                else {
+                } else {
                     signal_s.signal_state = SignalState::Halt;
                 }
-            } else {
-                signal_s.signal_state = SignalState::Dark;
+                continue;
             }
+
+            // Looks like I've got nothing to do :)
+            signal_s.signal_state = SignalState::Dark;
         }
     }
 }

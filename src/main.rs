@@ -99,8 +99,7 @@ fn main() {
     world.register::<routing::Junction>();
     world.register::<signals::JunctionSignal>();
     world.register::<signals::ApproachSignal>();
-    world.register::<signals::TrainIsApproachingSignal>();
-    world.register::<signals::TrainIsInBlockOfSignal>();
+    world.register::<signals::TrainIsBlockingSignal>();
     world.register::<cargo::CargoStorage>();
     world.register::<cargo::CargoProducer>();
     world.register::<cargo::CargoConsumer>();
