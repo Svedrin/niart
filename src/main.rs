@@ -14,6 +14,7 @@ use piston_window::*;
 
 mod physics;
 mod routing;
+mod signals;
 mod cargo;
 mod map;
 
@@ -46,6 +47,10 @@ enum RoleKind {
     CoalMine,
     PowerPlant,
     WayPoint,
+    OffSignal,
+    RedSignal,
+    YellowSignal,
+    GreenSignal,
     Train
 }
 #[derive(Debug)]
@@ -53,6 +58,27 @@ struct Role(RoleKind);
 
 impl Component for Role {
     type Storage = VecStorage<Self>;
+}
+
+
+struct SignalRenderer;
+
+impl<'a> System<'a> for SignalRenderer {
+    type SystemData = (
+        ReadStorage<'a, signals::JunctionSignal>,
+        WriteStorage<'a, Role>,
+    );
+
+    fn run(&mut self, (signals, mut roles): Self::SystemData) {
+        for (signal, mut role) in (&signals, &mut roles).join() {
+            role.0 = match signal.signal_state {
+                signals::SignalState::Off  => RoleKind::OffSignal,
+                signals::SignalState::Halt => RoleKind::RedSignal,
+                signals::SignalState::Slow => RoleKind::YellowSignal,
+                signals::SignalState::Go   => RoleKind::GreenSignal,
+            };
+        }
+    }
 }
 
 
@@ -71,6 +97,10 @@ fn main() {
     world.register::<physics::Position>();
     world.register::<physics::TrainEngine>();
     world.register::<routing::Junction>();
+    world.register::<signals::JunctionSignal>();
+    world.register::<signals::ApproachSignal>();
+    world.register::<signals::TrainIsApproachingSignal>();
+    world.register::<signals::TrainIsInBlockOfSignal>();
     world.register::<cargo::CargoStorage>();
     world.register::<cargo::CargoProducer>();
     world.register::<cargo::CargoConsumer>();
@@ -109,6 +139,7 @@ fn main() {
         .with(routing::TrainNavigator, "TrainNavigator", &[])
         .with(cargo::CargoProductionSystem, "CargoProductionSystem", &[])
         .with(cargo::CargoConsumptionSystem, "CargoConsumptionSystem", &[])
+        .with(SignalRenderer, "SignalRenderer", &[])
         .build();
     dispatcher.setup(&mut world.res);
 
@@ -123,46 +154,54 @@ fn main() {
                 let entities = world.entities();
                 let positions = world.read_storage::<physics::Position>();
                 let junctions = world.read_storage::<routing::Junction>();
+                let mut signals = world.write_storage::<signals::JunctionSignal>();
                 let lazyupdt = world.read_resource::<LazyUpdate>();
-                for (junction, junction_pos, _) in (&entities, &positions, &junctions).join() {
+                for (junction, junction_pos, junction_j) in (&entities, &positions, &junctions).join() {
                     if mouse_pos.distance_length_to(junction_pos) < 10.0 {
-                        fn find_any_other_terminal(
-                            junctions: &ReadStorage<routing::Junction>,
-                            prev: Option<Entity>,
-                            curr: Entity,
-                        ) -> Option<Entity> {
-                            let curr_j = junctions.get(curr).expect("no curr");
-                            for &next in &curr_j.connections {
-                                if prev.is_some() && next == prev.expect("Split brain") {
-                                    continue;
+                        if junction_j.is_terminal {
+                            fn find_any_other_terminal(
+                                junctions: &ReadStorage<routing::Junction>,
+                                prev: Option<Entity>,
+                                curr: Entity,
+                            ) -> Option<Entity> {
+                                let curr_j = junctions.get(curr).expect("no curr");
+                                for &next in &curr_j.connections {
+                                    if prev.is_some() && next == prev.expect("Split brain") {
+                                        continue;
+                                    }
+                                    let next_j = junctions.get(next).expect("no next");
+                                    if next_j.is_terminal {
+                                        return Some(next);
+                                    }
+                                    let maybe_term = find_any_other_terminal(junctions, Some(curr), next);
+                                    if maybe_term.is_some() {
+                                        return maybe_term;
+                                    }
                                 }
-                                let next_j = junctions.get(next).expect("no next");
-                                if next_j.is_terminal {
-                                    return Some(next);
-                                }
-                                let maybe_term = find_any_other_terminal(junctions, Some(curr), next);
-                                if maybe_term.is_some() {
-                                    return maybe_term;
-                                }
+                                None
                             }
-                            None
-                        }
-                        if let Some(destination) = find_any_other_terminal(&junctions, None, junction) {
-                            println!("Planting train at junction {:?} heading towards {:?}", junction, destination);
-                            lazyupdt.create_entity(&entities)
-                                .with(junction_pos.clone())
-                                .with(Role(RoleKind::Train))
-                                .with(routing::TrainIsInStation { station: junction })
-                                .with(routing::TrainWantsToTravelTo { destination: destination })
-                                .with(physics::TrainEngine {
-                                    velocity:     physics::Vector { x:  0., y: 0. },
-                                    acceleration: physics::Vector { x:  0., y: 0. },
-                                    vmax:     30.0,
-                                    amax:      5.0
-                                })
-                                .build();
+                            if let Some(destination) = find_any_other_terminal(&junctions, None, junction) {
+                                println!("Planting train at junction {:?} heading towards {:?}", junction, destination);
+                                lazyupdt.create_entity(&entities)
+                                    .with(junction_pos.clone())
+                                    .with(Role(RoleKind::Train))
+                                    .with(routing::TrainIsInStation { station: junction })
+                                    .with(routing::TrainWantsToTravelTo { destination: destination })
+                                    .with(physics::TrainEngine {
+                                        velocity: physics::Vector { x: 0., y: 0. },
+                                        acceleration: physics::Vector { x: 0., y: 0. },
+                                        vmax: 30.0,
+                                        amax: 5.0
+                                    })
+                                    .build();
+                            } else {
+                                println!("Planting train at junction {:?} is not possible, junction does not have connections", junction);
+                            }
                         } else {
-                            println!("Planting train at junction {:?} is not possible, junction does not have connections", junction);
+                            println!("We should make a signal at {:?}", junction);
+                            signals
+                                .insert(junction, signals::JunctionSignal::new())
+                                .expect("Sad signalling panda");
                         }
                     }
                 }
@@ -242,10 +281,14 @@ fn main() {
             for (pos, role) in (&positions, &roles).join() {
                 ellipse_from_to(
                     match role {
-                        Role(RoleKind::CoalMine)   => [1.,  0.,  0.,  1.],
-                        Role(RoleKind::PowerPlant) => [0.,  1.,  0.,  1.],
-                        Role(RoleKind::Train)      => [0.,  0.,  1.,  1.],
-                        Role(RoleKind::WayPoint)   => [0.8, 0.8, 0.,  1.],
+                        Role(RoleKind::CoalMine)     => [0.2, 0.2, 0.2, 1.],
+                        Role(RoleKind::PowerPlant)   => [0.7, 0.7, 0.7, 1.],
+                        Role(RoleKind::Train)        => [0.,  0.,  1.,  1.],
+                        Role(RoleKind::OffSignal)    => [0.,  0.,  0.,  1.],
+                        Role(RoleKind::RedSignal)    => [1.,  0.,  0.,  1.],
+                        Role(RoleKind::YellowSignal) => [0.9, 0.9, 0.,  1.],
+                        Role(RoleKind::GreenSignal)  => [0.,  1.,  0.,  1.],
+                        Role(RoleKind::WayPoint)     => [0.7, 0.7, 0.,  1.],
                     },
                     [pos.x - 5., pos.y - 5.],
                     [pos.x + 5., pos.y + 5.],
