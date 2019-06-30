@@ -141,8 +141,6 @@ impl<'a> System<'a> for Fahrdienstleiter {
                     if vmax < ASSUMED_VMAX {
                         let _ = speed_limits_upcoming
                             .insert(train, SpeedLimitFromNextSignal { vmax: vmax });
-                    } else {
-                        let _ = speed_limits_upcoming.remove(train);
                     }
                 }
             }
