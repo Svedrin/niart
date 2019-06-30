@@ -173,10 +173,7 @@ impl<'a> System<'a> for TrainDriver {
             //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
 
-            // Decide where it is that we need to stop next.
-            // If we're approaching a signal and that signal shows red, we'll need
-            // to stop some ways away in front of it, so that our Navigator doesn't
-            // conclude we passed it already and people don't get uncomfortable.
+            // How far away is the next hop?
             let distance = direction.length();
 
             // Make sure we're going in the right direction.
@@ -223,8 +220,11 @@ impl<'a> System<'a> for TrainDriver {
                 // 2. how far I'm travelling in that time is given by the velocity
                 // 3. thus t = v/a, s = v * t -> s = v²/a
                 //    if we're closer than this distance, brake furiously
-                let braking_distance = ((engine.velocity.length() - v_upcoming).powi(2) / engine.amax) + 12.0;
-                if distance < braking_distance {
+                let braking_distance = (engine.velocity.length() - v_upcoming).powi(2) / engine.amax;
+                // If we're approaching a signal and that signal shows red, we'll need
+                // to stop some ways away in front of it, so that our Navigator doesn't
+                // conclude we passed it already and people don't get uncomfortable.
+                if distance < braking_distance + 12.0 {
                     engine.acceleration = direction.scale_to_length(-engine.amax);
                     continue;
                 }
