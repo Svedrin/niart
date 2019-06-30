@@ -24,14 +24,6 @@ impl Vector {
             y: self.y * fac
         }
     }
-
-    pub fn limit(&self, max_length: f64) -> Self {
-        if self.length() < max_length {
-            self.clone()
-        } else {
-            self.scale_to_length(max_length)
-        }
-    }
 }
 
 #[derive(Clone,Debug,PartialEq)]
@@ -60,18 +52,22 @@ impl Position {
         self.distance_to(other).length()
     }
 
+    #[allow(dead_code)]
     pub fn as_f32_array(&self) -> [f32; 2] {
         [self.x as f32, self.y as f32]
     }
 
+    #[allow(dead_code)]
     pub fn as_f64_array(&self) -> [f64; 2] {
         [self.x, self.y]
     }
 
+    #[allow(dead_code)]
     pub fn as_f32_tuple(&self) -> (f32, f32) {
         (self.x as f32, self.y as f32)
     }
 
+    #[allow(dead_code)]
     pub fn as_f64_tuple(&self) -> (f64, f64) {
         (self.x, self.y)
     }
@@ -142,7 +138,6 @@ pub struct TrainDriver;
 
 impl<'a> System<'a> for TrainDriver {
     type SystemData = (
-        Entities<'a>,                      // I'm a guy
         ReadStorage<'a, Position>,         // I'm somewhere
         WriteStorage<'a, TrainEngine>,     // I haz an engine that I can play with
         ReadStorage<'a, TrainRoute>,       // I wanna go somewhere
@@ -151,14 +146,13 @@ impl<'a> System<'a> for TrainDriver {
 
     fn run(&mut self, sys_data: Self::SystemData) {
         let (
-            entities,
             positions,
             mut engines,
             routes,
             trains_in_station
         ) = sys_data;
         // Open Road
-        for (train, train_pos, mut engine, route) in (&entities, &positions, &mut engines, &routes).join() {
+        for (train_pos, mut engine, route) in (&positions, &mut engines, &routes).join() {
             let next_pos = positions.get(route.next_hop()).unwrap();
             //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
@@ -188,7 +182,7 @@ impl<'a> System<'a> for TrainDriver {
             engine.acceleration = Vector::zero();
         }
         // In a station
-        for (train, train_pos, mut engine, station) in (&entities, &positions, &mut engines, &trains_in_station).join() {
+        for (train_pos, mut engine, station) in (&positions, &mut engines, &trains_in_station).join() {
             let next_pos = positions.get(station.station).unwrap();
             //println!("I'm in ur {:?}, going to {:?}", train_pos, next_pos);
             let direction = next_pos.distance_to(train_pos);
