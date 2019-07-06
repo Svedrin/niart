@@ -56,9 +56,9 @@ pub struct TrainRoute {
     pub hops: VecDeque<Entity>
 }
 impl TrainRoute {
-    pub fn new(path: Vec<Entity>) -> Self {
+    pub fn new(path: VecDeque<Entity>) -> Self {
         Self {
-            hops: VecDeque::from(path)
+            hops: path
         }
     }
     pub fn next_hop(&self) -> Entity {
@@ -87,6 +87,37 @@ impl Component for TrainRoute {
  */
 pub struct TrainRouter;
 
+enum PrevHop<'a> {
+    None,
+    Previous(&'a PrevHop<'a>, &'a Entity)
+}
+
+impl<'a> PrevHop<'a> {
+    pub fn contains(&self, hop: &Entity) -> bool {
+        match self {
+            PrevHop::Previous(prev, this_hop) => *this_hop == hop || prev.contains(hop),
+            PrevHop::None => false
+        }
+    }
+    pub fn add(&'a self, hop: &'a Entity) -> Self {
+        PrevHop::Previous(self, hop)
+    }
+    pub fn into_vec(self) -> VecDeque<Entity> {
+        fn inner(ph: &PrevHop, sz: usize) -> VecDeque<Entity> {
+            match ph {
+                PrevHop::None => VecDeque::with_capacity(sz),
+                PrevHop::Previous(prev, this_hop) => {
+                    let mut vec = inner(prev, sz + 1);
+                    vec.push_back(**this_hop);
+                    vec
+                },
+            }
+        }
+        inner(&self, 0)
+    }
+}
+
+
 impl<'a> System<'a> for TrainRouter {
     type SystemData = (
         Entities<'a>,
@@ -112,18 +143,17 @@ impl<'a> System<'a> for TrainRouter {
             // We're coming from station.station -> Entity -> Junction.
             // We wanna go to destination.destination -> Entity -> Junction.
             // station_junction hopefully has connections that have connections to dest_junction.
-            // Note that we build the path in reverse because it saves a ton of copying.
             fn walk_the_line(
                 junctions: &ReadStorage<Junction>,
                 signals: &ReadStorage<JunctionSignal>,
-                prev: Option<Entity>,
+                prev: &PrevHop,
                 curr: Entity,
                 dest: Entity,
                 ttl: u8
-            ) -> Vec<Entity> {
+            ) -> VecDeque<Entity> {
                 // Infinite loop protection
                 if ttl == 0 {
-                    return vec![];
+                    return VecDeque::new();
                 }
                 let curr_j = junctions.get(curr).unwrap();
                 // When looking for a path to the destination, make two passes.
@@ -140,38 +170,39 @@ impl<'a> System<'a> for TrainRouter {
                 // option we have.
                 for &i_hate_signals in &[true, false] {
                     for &next in &curr_j.connections {
-                        if prev.is_some() && next == prev.unwrap() {
+                        if prev.contains(&next) { // No loops plox
                             continue;
                         }
                         if i_hate_signals && signals.contains(next) {
                             continue;
                         }
                         if next == dest {
-                            return vec![dest];
+                            return prev.add(&curr).add(&dest).into_vec();
                         }
-                        let mut path_from_next = walk_the_line(
+                        let path_from_next = walk_the_line(
                             junctions, signals,
-                            Some(curr), next, dest,
+                            &prev.add(&curr),
+                            next,
+                            dest,
                             ttl - 1
                         );
                         if !path_from_next.is_empty() {
-                            path_from_next.push(next);
                             return path_from_next;
                         }
                     }
                 }
-                vec![]
+                VecDeque::new()
             }
             let mut path_to_dest = walk_the_line(
                 &junctions,
                 &signals,
-                None,
+                &PrevHop::None,
                 station.station,
                 destination.destination,
                 32
             );
             if !path_to_dest.is_empty() {
-                path_to_dest.reverse();
+                path_to_dest.pop_front(); // Pop _this_ station
                 println!("Path to enlightenment: {:?}", path_to_dest);
                 routes
                     .insert(train, TrainRoute::new(path_to_dest ))

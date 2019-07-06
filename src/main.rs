@@ -149,6 +149,7 @@ fn main() {
                         if junction_j.is_terminal {
                             // Choose any random terminal and leave it to the Router to figure out if this works
                             let dest = (&entities, &junctions).join()
+                                .filter(|(e, _j)| *e != junction)
                                 .filter(|(_e, j)| j.is_terminal)
                                 .map(|(e, _j)| e)
                                 .choose(&mut rng);
