@@ -16,8 +16,10 @@ mod physics;
 mod routing;
 mod signals;
 mod cargo;
+mod world;
 mod map;
 
+use world::populate;
 
 #[derive(Default)]
 pub struct DeltaTime {
@@ -112,26 +114,7 @@ fn main() {
 
     world.add_resource(DeltaTime::new());
 
-    world.create_entity()
-        .with(physics::Position { x: 9.0, y: 14.0 })
-        .with(cargo::CargoStorage::new())
-        .with(
-            cargo::CargoProducer::new()
-                .with(cargo::CargoKind::Coal, 0.1)
-        )
-        .with(Role(RoleKind::CoalMine))
-        .with(routing::Junction::new_terminal())
-        .build();
-    world.create_entity()
-        .with(physics::Position { x: 590.0, y: 462.5 })
-        .with(Role(RoleKind::PowerPlant))
-        .with(routing::Junction::new_terminal())
-        .build();
-    world.create_entity()
-        .with(physics::Position { x: 590.0, y: 130.0 })
-        .with(Role(RoleKind::PowerPlant))
-        .with(routing::Junction::new_terminal())
-        .build();
+    populate(&mut world);
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
