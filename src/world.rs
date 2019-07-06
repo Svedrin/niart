@@ -154,8 +154,6 @@ pub fn populate(world: &mut World, map: &mut Map) {
 
     connect_junctions(world, map, j_2, j_21);
 
-    // TODO: This is the perfect place for an approach signal, because trains can't stop at 21
-    // if they need to because they're way too fast. if they slowed down here, life would be good.
     let j_22 = world.create_entity()
         .with(Position::new(220.0, 240.0))
         .with(Junction::new())
@@ -193,8 +191,10 @@ pub fn populate(world: &mut World, map: &mut Map) {
 
     connect_junctions(world, map, j_6, j_31);
 
+    // TODO: This is the perfect place for an approach signal, because trains can't stop at 21
+    // if they need to because they're way too fast. if they slowed down here, life would be good.
     let j_32 = world.create_entity()
-        .with(Position::new(330.0, 190.0))
+        .with(Position::new(270.0, 190.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .build();
@@ -202,11 +202,19 @@ pub fn populate(world: &mut World, map: &mut Map) {
     connect_junctions(world, map, j_31, j_32);
 
     let j_33 = world.create_entity()
-        .with(Position::new(500.0, 160.0))
+        .with(Position::new(330.0, 190.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .build();
 
     connect_junctions(world, map, j_32, j_33);
-    connect_junctions(world, map, j_33, j_tpp);
+
+    let j_34 = world.create_entity()
+        .with(Position::new(500.0, 160.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .build();
+
+    connect_junctions(world, map, j_33, j_34);
+    connect_junctions(world, map, j_34, j_tpp);
 }
