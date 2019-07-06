@@ -1,7 +1,7 @@
 use specs::prelude::*;
 
 use super::physics::Position;
-use super::routing::TrainRoute;
+use super::routing::{TrainRoute, TrainIsInStation};
 
 #[derive(Clone,Debug,PartialEq)]
 pub enum SignalState {
@@ -86,6 +86,11 @@ const ASSUMED_VMAX:  f64 = 30.0;
 const VMAX_FOR_SLOW: f64 = 20.0;
 const ASSUMED_AMAX:  f64 =  4.0;
 
+
+/**
+ * In the German railway system, the person controlling signals and directing
+ * trains to their destination is called the "Fahrdienstleiter".
+ */
 pub struct Fahrdienstleiter;
 
 impl<'a> System<'a> for Fahrdienstleiter {
@@ -177,6 +182,50 @@ impl<'a> System<'a> for Fahrdienstleiter {
 
             // Looks like I've got nothing to do :)
             signal_s.signal_state = SignalState::Dark;
+        }
+    }
+}
+
+/**
+ * Once trains arrived in station, the Fahrdienstleiter doesn't really care about them
+ * all that much anymore. Let's have a companion cleaning lady that removes all the
+ * reservations those trains held.
+ */
+pub struct Fahrdienstputzfrau;
+
+impl<'a> System<'a> for Fahrdienstputzfrau {
+    type SystemData = (
+        Entities<'a>,
+        ReadStorage<'a,  TrainIsInStation>,
+        WriteStorage<'a, TrainIsBlockingSignal>,
+        WriteStorage<'a, SignalIsBlockedByTrain>,
+        WriteStorage<'a, SignalIsReservedByTrain>,
+    );
+
+    fn run(&mut self, sys_data: Self::SystemData) {
+        let (
+            entities,
+            trains_in_station,
+            mut train_blockages,
+            mut signal_blockages,
+            mut signal_reservations,
+        ) = sys_data;
+        // Clean up signal blockages held by trains that arrived in station.
+        for (train, _) in (&entities, &trains_in_station).join() {
+            if let Some(blockage) = train_blockages.remove(train) {
+                signal_blockages.remove(blockage.signal)
+                    .expect("blockage mismatch");
+            }
+        }
+        // Clean up signal reservations held by trains that arrived in station.
+        let mut outdated_rsvps = vec![];
+        for (signal, rsvp) in (&entities, &signal_reservations).join() {
+            if trains_in_station.contains(rsvp.train) {
+                outdated_rsvps.push(signal);
+            }
+        }
+        for signal in outdated_rsvps {
+            signal_reservations.remove(signal).expect("derp");
         }
     }
 }
