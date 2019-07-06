@@ -117,8 +117,13 @@ impl<'a> System<'a> for TrainRouter {
                 signals: &ReadStorage<JunctionSignal>,
                 prev: Option<Entity>,
                 curr: Entity,
-                dest: Entity
+                dest: Entity,
+                ttl: u8
             ) -> Vec<Entity> {
+                // Infinite loop protection
+                if ttl == 0 {
+                    return vec![];
+                }
                 let curr_j = junctions.get(curr).unwrap();
                 // When looking for a path to the destination, make two passes.
                 // It may or may not be the case, that there are two paths forward that
@@ -143,7 +148,11 @@ impl<'a> System<'a> for TrainRouter {
                         if next == dest {
                             return vec![dest];
                         }
-                        let mut path_from_next = walk_the_line(junctions, signals, Some(curr), next, dest);
+                        let mut path_from_next = walk_the_line(
+                            junctions, signals,
+                            Some(curr), next, dest,
+                            ttl - 1
+                        );
                         if !path_from_next.is_empty() {
                             path_from_next.push(next);
                             return path_from_next;
@@ -157,7 +166,8 @@ impl<'a> System<'a> for TrainRouter {
                 &signals,
                 None,
                 station.station,
-                destination.destination
+                destination.destination,
+                32
             );
             if !path_to_dest.is_empty() {
                 path_to_dest.reverse();
