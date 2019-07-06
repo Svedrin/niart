@@ -107,6 +107,7 @@ impl<'a> System<'a> for TrainRouter {
             signals,
         ) = sys_data;
         let mut trains_that_left_the_building = vec![];
+        let mut doomed_trains = vec![];
         for (train, station, destination) in (&entities, &trains_in_station, &trains_that_want_to_travel).join() {
             // We're coming from station.station -> Entity -> Junction.
             // We wanna go to destination.destination -> Entity -> Junction.
@@ -176,11 +177,17 @@ impl<'a> System<'a> for TrainRouter {
                     .insert(train, TrainRoute::new(path_to_dest ))
                     .expect("Mission impossible");
                 trains_that_left_the_building.push(train);
+            } else {
+                println!("Mission impossible (no path exists)");
+                doomed_trains.push(train);
             }
         }
         for train in trains_that_left_the_building {
             trains_in_station.remove(train);
             trains_that_want_to_travel.remove(train);
+        }
+        for train in doomed_trains {
+            entities.delete(train).expect("no deleto");
         }
     }
 }
