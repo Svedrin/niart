@@ -2,7 +2,7 @@ use specs::prelude::*;
 
 use super::map::Map;
 use super::physics::Position;
-use super::cargo::{CargoStorage, CargoProducer, CargoConsumer, CargoKind};
+use super::cargo::{CargoStorage, CargoProducer, CargoKind};
 use super::routing::Junction;
 use super::signals::JunctionSignal;
 use super::{Role, RoleKind};
@@ -21,7 +21,7 @@ fn connect_junctions(world: &mut World, map: &mut Map, left: Entity, right: Enti
 
 pub fn populate(world: &mut World, map: &mut Map) {
     let coal_mine = world.create_entity()
-        .with(Position::new(10.0, 15.0))
+        .with(Position::new(60.0, 65.0))
         .with(CargoStorage::new())
         .with(
             CargoProducer::new()
@@ -55,7 +55,7 @@ pub fn populate(world: &mut World, map: &mut Map) {
 
     // Add one junction in front of each of our terminals
     let j_cm = world.create_entity()
-        .with(Position::new(20.0, 25.0))
+        .with(Position::new(70.0, 75.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .build();
@@ -83,7 +83,7 @@ pub fn populate(world: &mut World, map: &mut Map) {
     // goes to the top power plant
     // Track CoalMine -> BPP
     let j_1 = world.create_entity()
-        .with(Position::new(20.0, 35.0))
+        .with(Position::new(70.0, 85.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .build();
@@ -120,7 +120,7 @@ pub fn populate(world: &mut World, map: &mut Map) {
 
     // Track BPP -> CoalMine, but counting reverse (so 5 is next to 1, 6->2, 7->3, 8->4)
     let j_5 = world.create_entity()
-        .with(Position::new(30.0, 25.0))
+        .with(Position::new(80.0, 75.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .with(JunctionSignal::new())
