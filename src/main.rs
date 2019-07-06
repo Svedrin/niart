@@ -3,6 +3,7 @@ extern crate gfx_device_gl;
 extern crate image as im;
 extern crate imageproc as imp;
 extern crate specs;
+extern crate rand;
 
 // I need a
 // https://raw.githubusercontent.com/PistonDevelopers/piston-examples/master/src/paint.rs
@@ -11,6 +12,7 @@ extern crate specs;
 use std::time::SystemTime;
 use specs::prelude::*;
 use piston_window::*;
+use rand::seq::IteratorRandom;
 
 mod physics;
 mod routing;
@@ -86,6 +88,7 @@ impl<'a> System<'a> for SignalRenderer {
 
 
 fn main() {
+    let mut rng = rand::thread_rng();
     let (width, height) = (640, 480);
     let mut window: PistonWindow =
         WindowSettings::new("niart", (width, height))
@@ -144,28 +147,12 @@ fn main() {
                 for (junction, junction_pos, junction_j) in (&entities, &positions, &junctions).join() {
                     if mouse_pos.distance_length_to(junction_pos) < 10.0 {
                         if junction_j.is_terminal {
-                            fn find_any_other_terminal(
-                                junctions: &ReadStorage<routing::Junction>,
-                                prev: Option<Entity>,
-                                curr: Entity,
-                            ) -> Option<Entity> {
-                                let curr_j = junctions.get(curr).expect("no curr");
-                                for &next in &curr_j.connections {
-                                    if prev.is_some() && next == prev.expect("Split brain") {
-                                        continue;
-                                    }
-                                    let next_j = junctions.get(next).expect("no next");
-                                    if next_j.is_terminal {
-                                        return Some(next);
-                                    }
-                                    let maybe_term = find_any_other_terminal(junctions, Some(curr), next);
-                                    if maybe_term.is_some() {
-                                        return maybe_term;
-                                    }
-                                }
-                                None
-                            }
-                            if let Some(destination) = find_any_other_terminal(&junctions, None, junction) {
+                            // Choose any random terminal and leave it to the Router to figure out if this works
+                            let dest = (&entities, &junctions).join()
+                                .filter(|(_e, j)| j.is_terminal)
+                                .map(|(e, _j)| e)
+                                .choose(&mut rng);
+                            if let Some(destination) = dest {
                                 println!("Planting train at junction {:?} heading towards {:?}", junction, destination);
                                 lazyupdt.create_entity(&entities)
                                     .with(junction_pos.clone())
