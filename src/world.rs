@@ -21,7 +21,7 @@ fn connect_junctions(world: &mut World, map: &mut Map, left: Entity, right: Enti
 
 pub fn populate(world: &mut World, map: &mut Map) {
     let coal_mine = world.create_entity()
-        .with(Position::new(60.0, 65.0))
+        .with(Position::new(40.0, 45.0))
         .with(CargoStorage::new())
         .with(
             CargoProducer::new()
@@ -53,11 +53,21 @@ pub fn populate(world: &mut World, map: &mut Map) {
         .with(Junction::new_terminal())
         .build();
 
+    let coal_mine_signal = world.create_entity()
+        .with(Position::new(30.0, 35.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::RedSignal))
+        .with(JunctionSignal::new())
+        .build();
+
+    connect_junctions(world, map, coal_mine, coal_mine_signal);
+
     // Add one junction in front of each of our terminals
     let j_cm = world.create_entity()
-        .with(Position::new(70.0, 75.0))
+        .with(Position::new(50.0, 55.0))
         .with(Junction::new())
-        .with(Role(RoleKind::WayPoint))
+        .with(Role(RoleKind::RedSignal))
+        .with(JunctionSignal::new())
         .build();
 
     connect_junctions(world, map, j_cm, coal_mine);
