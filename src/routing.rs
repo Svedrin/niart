@@ -94,6 +94,7 @@ impl<'a> System<'a> for TrainRouter {
         WriteStorage<'a, TrainWantsToTravelTo>,
         WriteStorage<'a, TrainRoute>,
         ReadStorage<'a, Junction>,
+        ReadStorage<'a, JunctionSignal>,
     );
 
     fn run(&mut self, sys_data: Self::SystemData) {
@@ -103,6 +104,7 @@ impl<'a> System<'a> for TrainRouter {
             mut trains_that_want_to_travel,
             mut routes,
             junctions,
+            signals,
         ) = sys_data;
         let mut trains_that_left_the_building = vec![];
         for (train, station, destination) in (&entities, &trains_in_station, &trains_that_want_to_travel).join() {
@@ -112,28 +114,47 @@ impl<'a> System<'a> for TrainRouter {
             // Note that we build the path in reverse because it saves a ton of copying.
             fn walk_the_line(
                 junctions: &ReadStorage<Junction>,
+                signals: &ReadStorage<JunctionSignal>,
                 prev: Option<Entity>,
                 curr: Entity,
                 dest: Entity
             ) -> Vec<Entity> {
                 let curr_j = junctions.get(curr).unwrap();
-                for &next in &curr_j.connections {
-                    if prev.is_some() && next == prev.unwrap() {
-                        continue;
-                    }
-                    if next == dest {
-                        return vec![dest];
-                    }
-                    let mut path_from_next = walk_the_line(junctions, Some(curr), next, dest);
-                    if !path_from_next.is_empty() {
-                        path_from_next.push(next);
-                        return path_from_next;
+                // When looking for a path to the destination, make two passes.
+                // It may or may not be the case, that there are two paths forward that
+                // lead to our destination: One goes via a signal, the other one doesn't.
+                // This frequently happens when we're leaving a station: We arrived at a
+                // junction where the incoming rail joins the outgoing one, and we'd like
+                // to keep that part of the rails free. Since usually the outgoing path
+                // does not have a signal while the incoming one does, let's see if we
+                // can avoid taking that route and still get to our destination.
+                // If we cannot find a path when ignoring those that go via signals, we
+                // make another pass that does not have this constraint. If that pass
+                // finds a path, we reluctantly take it because it's really the only
+                // option we have.
+                for &i_hate_signals in &[true, false] {
+                    for &next in &curr_j.connections {
+                        if prev.is_some() && next == prev.unwrap() {
+                            continue;
+                        }
+                        if i_hate_signals && signals.contains(next) {
+                            continue;
+                        }
+                        if next == dest {
+                            return vec![dest];
+                        }
+                        let mut path_from_next = walk_the_line(junctions, signals, Some(curr), next, dest);
+                        if !path_from_next.is_empty() {
+                            path_from_next.push(next);
+                            return path_from_next;
+                        }
                     }
                 }
                 vec![]
             }
             let mut path_to_dest = walk_the_line(
                 &junctions,
+                &signals,
                 None,
                 station.station,
                 destination.destination
