@@ -104,7 +104,16 @@ impl<'a> System<'a> for Fahrdienstleiter {
         WriteStorage<'a, SpeedLimitFromNextSignal>,
     );
 
-    fn run(&mut self, (entities, mut junction_signals, routes, mut reservations, blockages, positions, mut speed_limits_upcoming): Self::SystemData) {
+    fn run(&mut self, sys_data: Self::SystemData) {
+        let (
+            entities,
+            mut junction_signals,
+            routes,
+            mut reservations,
+            blockages,
+            positions,
+            mut speed_limits_upcoming,
+        ) = sys_data;
         // Phase one: Let's go over all'a dem trains and see what we can do for them in terms
         // of signal reservations.
         // Each train that is en route wants to have two reservations: One for the signal where
