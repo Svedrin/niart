@@ -53,12 +53,14 @@ impl Component for TrainWantsToTravelTo {
 
 #[derive(Debug, Clone)]
 pub struct TrainRoute {
-    pub hops: VecDeque<Entity>
+    pub hops: VecDeque<Entity>,
+    pub dest: Entity,
 }
 impl TrainRoute {
-    pub fn new(path: VecDeque<Entity>) -> Self {
+    pub fn new(path: VecDeque<Entity>, dest: Entity) -> Self {
         Self {
-            hops: path
+            hops: path,
+            dest: dest
         }
     }
     pub fn next_hop(&self) -> Entity {
@@ -66,9 +68,6 @@ impl TrainRoute {
     }
     pub fn arrived_at_hop(&mut self) -> Entity {
         self.hops.pop_front().expect("Sad panda")
-    }
-    pub fn is_empty(&self) -> bool {
-        self.hops.is_empty()
     }
 }
 impl Component for TrainRoute {
@@ -143,12 +142,15 @@ impl<'a> System<'a> for TrainRouter {
             // We're coming from station.station -> Entity -> Junction.
             // We wanna go to destination.destination -> Entity -> Junction.
             // station_junction hopefully has connections that have connections to dest_junction.
+            // Let's find that connection.
+            // Once we're at dest, let's find the next signal which should be that station's
+            // exit signal, so that we can correctly rsvp the path to our destination.
             fn walk_the_line(
                 junctions: &ReadStorage<Junction>,
                 signals: &ReadStorage<JunctionSignal>,
                 prev: &PrevHop,
                 curr: Entity,
-                dest: Entity,
+                dest: Option<Entity>,
                 ttl: u8
             ) -> VecDeque<Entity> {
                 // Infinite loop protection
@@ -173,21 +175,44 @@ impl<'a> System<'a> for TrainRouter {
                         if prev.contains(&next) { // No loops plox
                             continue;
                         }
-                        if i_hate_signals && signals.contains(next) {
-                            continue;
-                        }
-                        if next == dest {
-                            return prev.add(&curr).add(&dest).into_vec();
-                        }
-                        let path_from_next = walk_the_line(
-                            junctions, signals,
-                            &prev.add(&curr),
-                            next,
-                            dest,
-                            ttl - 1
-                        );
-                        if !path_from_next.is_empty() {
-                            return path_from_next;
+                        if let Some(dest) = dest {
+                            // We have not even yet found the actual destination.
+                            // Recurse until we do.
+                            if i_hate_signals && signals.contains(next) {
+                                // Unless we're not in the mood for running across signals.
+                                continue;
+                            }
+                            let path_from_next =
+                                if next == dest {
+                                    // Hooray, we're here! Find the next signal.
+                                    walk_the_line(
+                                        junctions, signals,
+                                        &prev.add(&curr),
+                                        dest,
+                                        None,
+                                        ttl - 1
+                                    )
+                                } else {
+                                    // No luck. Let's see if that node finds a way to dest
+                                    walk_the_line(
+                                        junctions, signals,
+                                        &prev.add(&curr),
+                                        next,
+                                        Some(dest),
+                                        ttl - 1
+                                    )
+                                };
+                            if !path_from_next.is_empty() {
+                                return path_from_next;
+                            }
+                        } else {
+                            // We're at the original destination. Find the next signal.
+                            // This signal has to be an exit signal of the station, thus
+                            // it is directly attached to dest (or does not exist).
+                            // No more recursion.
+                            if signals.contains(next) {
+                                return prev.add(&curr).add(&next).into_vec();
+                            }
                         }
                     }
                 }
@@ -198,14 +223,17 @@ impl<'a> System<'a> for TrainRouter {
                 &signals,
                 &PrevHop::None,
                 station.station,
-                destination.destination,
+                Some(destination.destination),
                 32
             );
             if !path_to_dest.is_empty() {
                 path_to_dest.pop_front(); // Pop _this_ station
                 println!("Path to enlightenment: {:?}", path_to_dest);
                 routes
-                    .insert(train, TrainRoute::new(path_to_dest ))
+                    .insert(
+                        train,
+                        TrainRoute::new(path_to_dest, destination.destination)
+                    )
                     .expect("Mission impossible");
                 trains_that_left_the_building.push(train);
             } else {
@@ -291,7 +319,7 @@ impl<'a> System<'a> for TrainNavigator {
                     }
                 }
                 // are we at the final destination?
-                if route.is_empty() {
+                if here == route.dest {
                     arrived_trains.push(train);
                     trains_in_station
                         .insert(train, TrainIsInStation { station: here })
