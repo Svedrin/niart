@@ -76,16 +76,14 @@ impl Component for TrainRoute {
 
 
 /**
- * TrainRouter is on the lookout for trains that are in a station and that intend to travel
- * to some destination. Then it calculates a route and sends the train on the road.
- *
- * In the real world, this is probably done by a dispatcher and/or traffic superintendent.
- * "Dispatcher" is just way too generic a word that I feel comfortable using it here,
- * and the traffic superintendent does way more than just routing. Routing is just their
- * first step, so calling this struct a "TrafficSuperintendent" feels wrong.
+ * Helper enum used by the TrainRouter.
+ * It represents a tree of Junctions that stores along which path we came
+ * to the position where we are now.
+ * The nice thing about it is that it does so without heap allocations
+ * or copying data around, both of which would be required when storing
+ * this information in a Vec or somesuch.
+ * Getting those lifetime annotations correct did drive me crazy though :P
  */
-pub struct TrainRouter;
-
 enum PrevHop<'a> {
     None,
     Previous(&'a PrevHop<'a>, &'a Entity)
@@ -116,6 +114,17 @@ impl<'a> PrevHop<'a> {
     }
 }
 
+
+/**
+ * TrainRouter is on the lookout for trains that are in a station and that intend to travel
+ * to some destination. Then it calculates a route and sends the train on the road.
+ *
+ * In the real world, this is probably done by a dispatcher and/or traffic superintendent.
+ * "Dispatcher" is just way too generic a word that I feel comfortable using it here,
+ * and the traffic superintendent does way more than just routing. Routing is just their
+ * first step, so calling this struct a "TrafficSuperintendent" feels wrong.
+ */
+pub struct TrainRouter;
 
 impl<'a> System<'a> for TrainRouter {
     type SystemData = (
