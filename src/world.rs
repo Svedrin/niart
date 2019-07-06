@@ -60,7 +60,23 @@ pub fn populate(world: &mut World, map: &mut Map) {
         .with(JunctionSignal::new())
         .build();
 
+    let bottom_power_plant_signal = world.create_entity()
+        .with(Position::new(610.0, 470.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::RedSignal))
+        .with(JunctionSignal::new())
+        .build();
+
+    let top_power_plant_signal = world.create_entity()
+        .with(Position::new(610.0, 125.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::RedSignal))
+        .with(JunctionSignal::new())
+        .build();
+
     connect_junctions(world, map, coal_mine, coal_mine_signal);
+    connect_junctions(world, map, bottom_power_plant, bottom_power_plant_signal);
+    connect_junctions(world, map, top_power_plant, top_power_plant_signal);
 
     // Add one junction in front of each of our terminals
     let j_cm = world.create_entity()
@@ -119,7 +135,7 @@ pub fn populate(world: &mut World, map: &mut Map) {
     connect_junctions(world, map, j_2, j_3);
 
     let j_4 = world.create_entity()
-        .with(Position::new(580.0, 450.0))
+        .with(Position::new(530.0, 420.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .with(JunctionSignal::new())
@@ -157,7 +173,7 @@ pub fn populate(world: &mut World, map: &mut Map) {
     connect_junctions(world, map, j_6, j_7);
 
     let j_8 = world.create_entity()
-        .with(Position::new(590.0, 440.0))
+        .with(Position::new(540.0, 410.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .build();
