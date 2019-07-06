@@ -261,7 +261,7 @@ fn main() {
                         Role(RoleKind::RedSignal)    => [1.,  0.,  0.,  1.],
                         Role(RoleKind::YellowSignal) => [0.9, 0.9, 0.,  1.],
                         Role(RoleKind::GreenSignal)  => [0.,  1.,  0.,  1.],
-                        Role(RoleKind::WayPoint)     => [0.7, 0.7, 0.,  1.],
+                        Role(RoleKind::WayPoint)     => [0.7, 0.,  0.7, 1.],
                     },
                     [pos.x - 5., pos.y - 5.],
                     [pos.x + 5., pos.y + 5.],
