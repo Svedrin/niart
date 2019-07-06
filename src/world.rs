@@ -41,6 +41,18 @@ pub fn populate(world: &mut World, map: &mut Map) {
         .with(Junction::new_terminal())
         .build();
 
+    let _unconnected_power_plant_1 = world.create_entity()
+        .with(Position::new(500.0, 300.0))
+        .with(Role(RoleKind::PowerPlant))
+        .with(Junction::new_terminal())
+        .build();
+
+    let _unconnected_power_plant_2 = world.create_entity()
+        .with(Position::new(100.0, 430.0))
+        .with(Role(RoleKind::PowerPlant))
+        .with(Junction::new_terminal())
+        .build();
+
     // Add one junction in front of each of our terminals
     let j_cm = world.create_entity()
         .with(Position::new(20.0, 25.0))
