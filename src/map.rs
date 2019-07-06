@@ -16,6 +16,7 @@ pub enum MapEvent {
     RandomEvent
 }
 
+#[derive(Clone)]
 enum State {
     NotDrawing,
     DrawingFrom(Position)
@@ -71,13 +72,8 @@ impl Map {
     }
 
     pub fn stop_drawing(&mut self) {
-        if let State::DrawingFrom(ref start_pos) = self.state {
-            draw_line_segment_mut(
-                &mut self.canvas,
-                start_pos.as_f32_tuple(),
-                self.mouse_pos.as_f32_tuple(),
-                Rgba([0, 0, 0, 255])
-            );
+        if let State::DrawingFrom(start_pos) = self.state.clone() {
+            self.draw_rails_at(&start_pos, &self.mouse_pos.clone());
             self.events.push_back(
                 MapEvent::NewRail(start_pos.clone(), self.mouse_pos.clone())
             );
@@ -94,6 +90,15 @@ impl Map {
 
     pub fn next_event(&mut self) -> Option<MapEvent> {
         self.events.pop_front()
+    }
+
+    pub fn draw_rails_at(&mut self, start: &Position, end: &Position) {
+        draw_line_segment_mut(
+            &mut self.canvas,
+            start.as_f32_tuple(),
+            end.as_f32_tuple(),
+            Rgba([0, 0, 0, 255])
+        );
     }
 
     fn find_rails_at(&self, start: &Position) -> Option<Position> {
