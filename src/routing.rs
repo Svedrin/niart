@@ -76,34 +76,43 @@ impl Component for TrainRoute {
 
 
 /**
- * Helper enum used by the TrainRouter.
+ * Helper enum used by the TrainRouter to efficiently evaluate paths while
+ * searching for a route.
  * It represents a tree of Junctions that stores along which path we came
  * to the position where we are now.
  * The nice thing about it is that it does so without heap allocations
  * or copying data around, both of which would be required when storing
  * this information in a Vec or somesuch.
  * Getting those lifetime annotations correct did drive me crazy though :P
+ * Since the tree exclusively stores references, it cannot outlive the
+ * walk_the_line call stack that it was created in.
  */
-enum PrevHop<'a> {
-    None,
-    Previous(&'a PrevHop<'a>, &'a Entity)
+enum PathTree<'a> {
+    Root,
+    Node(&'a PathTree<'a>, &'a Entity)
 }
 
-impl<'a> PrevHop<'a> {
+impl<'a> PathTree<'a> {
+    // Create a new node that adds the hop to its path.
+    pub fn add(&'a self, hop: &'a Entity) -> Self {
+        PathTree::Node(self, hop)
+    }
+    // Check if the path contains a specific hop.
     pub fn contains(&self, hop: &Entity) -> bool {
         match self {
-            PrevHop::Previous(prev, this_hop) => *this_hop == hop || prev.contains(hop),
-            PrevHop::None => false
+            PathTree::Node(prev, this_hop) => *this_hop == hop || prev.contains(hop),
+            PathTree::Root => false
         }
     }
-    pub fn add(&'a self, hop: &'a Entity) -> Self {
-        PrevHop::Previous(self, hop)
-    }
+    // Convert the whole path into a VecDeque to feed into the TrainRoute.
     pub fn into_vec(self) -> VecDeque<Entity> {
-        fn inner(ph: &PrevHop, sz: usize) -> VecDeque<Entity> {
-            match ph {
-                PrevHop::None => VecDeque::with_capacity(sz),
-                PrevHop::Previous(prev, this_hop) => {
+        fn inner(treenode: &PathTree, sz: usize) -> VecDeque<Entity> {
+            // Recursive function that determines how many hops are in our
+            // path while going down, and then joins them into a VecDeque
+            // while coming back up.
+            match treenode {
+                PathTree::Root => VecDeque::with_capacity(sz),
+                PathTree::Node(prev, this_hop) => {
                     let mut vec = inner(prev, sz + 1);
                     vec.push_back(**this_hop);
                     vec
@@ -153,11 +162,11 @@ impl<'a> System<'a> for TrainRouter {
             // station_junction hopefully has connections that have connections to dest_junction.
             // Let's find that connection.
             // Once we're at dest, let's find the next signal which should be that station's
-            // exit signal, so that we can correctly rsvp the path to our destination.
+            // exit signal, so that the train can correctly rsvp the path to its destination.
             fn walk_the_line(
                 junctions: &ReadStorage<Junction>,
                 signals: &ReadStorage<JunctionSignal>,
-                prev: &PrevHop,
+                prev: &PathTree,
                 curr: Entity,
                 dest: Option<Entity>,
                 ttl: u8
@@ -230,7 +239,7 @@ impl<'a> System<'a> for TrainRouter {
             let mut path_to_dest = walk_the_line(
                 &junctions,
                 &signals,
-                &PrevHop::None,
+                &PathTree::Root,
                 station.station,
                 Some(destination.destination),
                 32
