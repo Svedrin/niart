@@ -36,7 +36,7 @@ pub fn populate(world: &mut World, map: &mut Map) {
         .with(Junction::new_terminal())
         .build();
     let top_power_plant = world.create_entity()
-        .with(Position::new(600.0, 180.0))
+        .with(Position::new(600.0, 130.0))
         .with(Role(RoleKind::PowerPlant))
         .with(Junction::new_terminal())
         .build();
@@ -59,7 +59,7 @@ pub fn populate(world: &mut World, map: &mut Map) {
     connect_junctions(world, map, j_bpp, bottom_power_plant);
 
     let j_tpp = world.create_entity()
-        .with(Position::new(590.0, 190.0))
+        .with(Position::new(570.0, 150.0))
         .with(Junction::new())
         .with(Role(RoleKind::WayPoint))
         .build();
@@ -142,4 +142,71 @@ pub fn populate(world: &mut World, map: &mut Map) {
 
     connect_junctions(world, map, j_7, j_8);
     connect_junctions(world, map, j_8, j_bpp);
+
+    // Side Track: Coal Mine -> TPP (split off from CM->BPP track at j_2)
+
+    let j_21 = world.create_entity()
+        .with(Position::new(170.0, 220.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .with(JunctionSignal::new())
+        .build();
+
+    connect_junctions(world, map, j_2, j_21);
+
+    // TODO: This is the perfect place for an approach signal, because trains can't stop at 21
+    // if they need to because they're way too fast. if they slowed down here, life would be good.
+    let j_22 = world.create_entity()
+        .with(Position::new(220.0, 240.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .build();
+
+    connect_junctions(world, map, j_21, j_22);
+
+    let j_23 = world.create_entity()
+        .with(Position::new(330.0, 240.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .build();
+
+    connect_junctions(world, map, j_22, j_23);
+
+    let j_24 = world.create_entity()
+        .with(Position::new(520.0, 180.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .with(JunctionSignal::new())
+        .build();
+
+    connect_junctions(world, map, j_23, j_24);
+    connect_junctions(world, map, j_24, j_tpp);
+
+    // Side Track: TPP -> Coal Mine (merged with BPP->CM track at j_6)
+
+    let j_31 = world.create_entity()
+        .with(Position::new(220.0, 170.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .with(JunctionSignal::new())
+        .build();
+
+    connect_junctions(world, map, j_6, j_31);
+
+    let j_32 = world.create_entity()
+        .with(Position::new(330.0, 190.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .build();
+
+    connect_junctions(world, map, j_31, j_32);
+
+    let j_33 = world.create_entity()
+        .with(Position::new(500.0, 160.0))
+        .with(Junction::new())
+        .with(Role(RoleKind::WayPoint))
+        .build();
+
+    connect_junctions(world, map, j_32, j_33);
+    connect_junctions(world, map, j_33, j_tpp);
 }
