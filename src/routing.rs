@@ -109,6 +109,7 @@ impl<'a> System<'a> for TrainRouter {
             // We're coming from station.station -> Entity -> Junction.
             // We wanna go to destination.destination -> Entity -> Junction.
             // station_junction hopefully has connections that have connections to dest_junction.
+            // Note that we build the path in reverse because it saves a ton of copying.
             fn walk_the_line(
                 junctions: &ReadStorage<Junction>,
                 prev: Option<Entity>,
@@ -123,23 +124,22 @@ impl<'a> System<'a> for TrainRouter {
                     if next == dest {
                         return vec![dest];
                     }
-                    let path_from_next = walk_the_line(junctions, Some(curr), next, dest);
+                    let mut path_from_next = walk_the_line(junctions, Some(curr), next, dest);
                     if !path_from_next.is_empty() {
-                        let mut path_from_here = Vec::with_capacity(path_from_next.len() + 1);
-                        path_from_here.push(next);
-                        path_from_here.extend_from_slice(&path_from_next);
-                        return path_from_here;
+                        path_from_next.push(next);
+                        return path_from_next;
                     }
                 }
                 vec![]
             }
-            let path_to_dest = walk_the_line(
+            let mut path_to_dest = walk_the_line(
                 &junctions,
                 None,
                 station.station,
                 destination.destination
             );
             if !path_to_dest.is_empty() {
+                path_to_dest.reverse();
                 println!("Path to enlightenment: {:?}", path_to_dest);
                 routes
                     .insert(train, TrainRoute::new(path_to_dest ))
