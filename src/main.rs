@@ -114,7 +114,7 @@ fn main() {
 
     world.add_resource(DeltaTime::new());
 
-    populate(&mut world);
+    populate(&mut world, &mut map);
 
     let mut dispatcher = DispatcherBuilder::new()
         .with(physics::TrainEngineSystem, "TrainEngineSystem", &[])
